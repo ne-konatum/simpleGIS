@@ -1,0 +1,102 @@
+```
+# Qt/MOC files
+*.moc
+moc_*.cpp
+moc_*.h
+moc_*.o
+*.moc.cpp
+*.moc.hpp
+*.moc.cc
+
+# Object files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# Executables
+*.exe
+*.out
+*.app
+*.bin
+
+# Build artifacts
+Makefile
+Makefile.*
+*.pro.user
+*.pro.user.*
+.qmake.stash
+qmldir
+*.qmlc
+*.jsc
+
+# UI files
+ui_*.h
+
+# Precompiled headers
+*.pch
+*.gch
+moc_predefs.h
+
+# Project files
+*.user
+*.user.*
+*.sln
+*.vcxproj
+*.vcproj
+*.[Ss]uo
+*.layout
+*.perspective
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Logs
+*.log
+
+# Coverage reports
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Distribution artifacts
+dist/
+build/
+target/
+release/
+debug/
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Compressed files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+```

@@ -154,11 +154,13 @@ void MBTilesViewer::drawTiles(QPainter *painter)
 
 QPointF MBTilesViewer::tileToPixel(int x, int y, int zoom)
 {
-    int tileSize = m_tileSize;
-    double scale = static_cast<double>(tileSize) * (1 << zoom);
-    double pixelX = x * scale;
-    // Инвертируем Y для соответствия TMS
-    double pixelY = (1 << zoom) * tileSize - (y + 1) * scale;
+    // Каждый тайл всегда имеет размер m_tileSize (256) пикселей
+    // Позиция тайла = координаты тайла * размер тайла
+    double pixelX = x * m_tileSize;
+    // Для TMS: Y инвертирован, поэтому считаем от верха карты
+    // Общая высота карты на этом зуме = (1 << zoom) * m_tileSize
+    // Позиция Y = общая высота - (y + 1) * размер тайла
+    double pixelY = ((1 << zoom) * m_tileSize) - (y + 1) * m_tileSize;
 
     return QPointF(pixelX, pixelY);
 }
@@ -181,21 +183,30 @@ QRectF MBTilesViewer::getVisibleTileRect(int currentZoom, const QSize& viewportS
         return QRectF();
     }
 
-    int pixelsPerTile = tileSize * (1 << currentZoom);
+    // Размер тайла в пикселях на текущем зуме
+    double pixelsPerTile = static_cast<double>(tileSize);
 
     qDebug() << "getVisibleTileRect: zoom" << currentZoom
               << "tileSize" << tileSize
               << "pixelsPerTile" << pixelsPerTile;
 
-    QPointF topLeftPixel = offset;
-    QPointF bottomRightPixel(offset.x() + viewportSize.width(),
-                 offset.y() + viewportSize.height());
+    // Смещение в пикселях
+    QPointF topLeftPixel = -offset;  // Инвертируем смещение для правильного расчета
+    QPointF bottomRightPixel(-offset.x() + viewportSize.width(),
+                 -offset.y() + viewportSize.height());
 
     // Корректное округление для тайловых координат
     int leftTile = qFloor(topLeftPixel.x() / pixelsPerTile);
-    int rightTile = qCeil(bottomRightPixel.x() / pixelsPerTile) - 1;
+    int rightTile = qCeil(bottomRightPixel.x() / pixelsPerTile);
     int topTile = qFloor(topLeftPixel.y() / pixelsPerTile);
-    int bottomTile = qCeil(bottomRightPixel.y() / pixelsPerTile) - 1;
+    int bottomTile = qCeil(bottomRightPixel.y() / pixelsPerTile);
+
+    // Ограничиваем координаты допустимым диапазоном
+    int maxTileIndex = (1 << currentZoom) - 1;
+    leftTile = qBound(0, leftTile, maxTileIndex);
+    rightTile = qBound(0, rightTile, maxTileIndex);
+    topTile = qBound(0, topTile, maxTileIndex);
+    bottomTile = qBound(0, bottomTile, maxTileIndex);
 
     QRectF rect(leftTile, topTile, rightTile - leftTile + 1, bottomTile - topTile + 1);
 
@@ -459,12 +470,21 @@ void MBTilesViewer::resetView()
     if (!m_databaseReady) return;
 
     m_currentZoom = qMax(m_minZoom, 0);
-    m_offset = QPointF(0, 0);
+    
+    // Находим первый доступный тайл на минимальном зуме и центрируем его
+    QPair<int, int> firstTile = findFirstAvailableTile(m_currentZoom);
+    if (firstTile.first >= 0) {
+        // Центрируем вид на первом доступном тайле
+        m_offset = QPointF(-firstTile.first * m_tileSize, 
+                          -((1 << m_currentZoom) * m_tileSize - (firstTile.second + 1) * m_tileSize));
+    } else {
+        m_offset = QPointF(0, 0);
+    }
 
     // Очищаем кэш загруженных тайлов при сбросе вида
     m_loadedTiles.clear();
     qDebug() << "View reset: zoom set to" << m_currentZoom
-              << "offset reset to (0,0), tile cache cleared";
+              << "offset reset to" << m_offset << ", tile cache cleared";
 
     updateViewport();
 }
