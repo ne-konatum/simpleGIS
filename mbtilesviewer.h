@@ -37,13 +37,14 @@ private slots:
 private:
     QSqlDatabase m_database;
     TileLoader *m_tileLoader;
-    int m_currentZoom = 0;
     QPointF m_offset;
     QMap<QPair<int, QPair<int, int>>, QPixmap> m_loadedTiles;
     bool m_databaseReady = false;
     int m_minZoom = 0;  // Кэш минимального зума
     int m_maxZoom = 17; // Кэш максимального зума
     const int m_tileSize = 256; // Фиксированный размер тайла
+    QSize m_viewportSize;       // Размер области просмотра
+    int m_currentZoom = 0;      // Текущий уровень зума
 
     // UI-элементы
     QPushButton *m_openButton;
@@ -73,7 +74,6 @@ private:
     bool checkDatabaseStructure();
     bool reopenDatabase();
     void loadVisibleTiles(const QRectF& visibleRect, int zoom);
-    QSize m_viewportSize;
     bool ensureDatabaseConnection();
     void loadChildTiles(int zoom, int x, int y);
 

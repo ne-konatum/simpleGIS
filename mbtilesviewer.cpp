@@ -469,17 +469,61 @@ void MBTilesViewer::resetView()
 {
     if (!m_databaseReady) return;
 
-    m_currentZoom = qMax(m_minZoom, 0);
+    // Устанавливаем zoom level 12 по умолчанию, или ближайший доступный
+    m_currentZoom = qBound(m_minZoom, 12, m_maxZoom);
     
-    // Находим первый доступный тайл на минимальном зуме и центрируем его
-    QPair<int, int> firstTile = findFirstAvailableTile(m_currentZoom);
-    if (firstTile.first >= 0) {
-        // Центрируем вид на первом доступном тайле
-        m_offset = QPointF(-firstTile.first * m_tileSize, 
-                          -((1 << m_currentZoom) * m_tileSize - (firstTile.second + 1) * m_tileSize));
-    } else {
-        m_offset = QPointF(0, 0);
+    qDebug() << "resetView: setting zoom to" << m_currentZoom << "(min:" << m_minZoom << ", max:" << m_maxZoom << ")";
+    
+    // Получаем центр карты из метаданных или используем (0, 0)
+    double centerX = 0.0;
+    double centerY = 0.0;
+    
+    QSqlQuery query(m_database);
+    query.exec("SELECT value FROM metadata WHERE name='center'");
+    if (query.next()) {
+        QString centerStr = query.value(0).toString();
+        QStringList parts = centerStr.split(',');
+        if (parts.size() >= 2) {
+            centerX = parts[0].trimmed().toDouble();
+            centerY = parts[1].trimmed().toDouble();
+            qDebug() << "resetView: center from metadata:" << centerX << centerY;
+        }
     }
+    
+    // Конвертируем географические координаты в тайловые координаты XYZ
+    // Формула для конвертации lon/lat в tile x/y
+    int n = 1 << m_currentZoom;
+    int tileX = static_cast<int>((centerX + 180.0) / 360.0 * n);
+    
+    // Для latitude нужно использовать формулу Меркатора
+    double latRad = centerY * M_PI / 180.0;
+    double mercN = std::log(std::tan(latRad) + 1.0 / std::cos(latRad));
+    int tileY = static_cast<int>((1.0 - mercN / M_PI) / 2.0 * n);
+    
+    // Конвертируем из XYZ в TMS (так как база использует TMS)
+    int tmsY = n - 1 - tileY;
+    
+    qDebug() << "resetView: tile coordinates at zoom" << m_currentZoom << ":" << tileX << tmsY << "(TMS)";
+    
+    // Проверяем, доступен ли этот тайл, если нет - ищем ближайший доступный
+    if (!isTileAvailable(m_currentZoom, tileX, tmsY)) {
+        qDebug() << "resetView: tile" << tileX << tmsY << "not available, searching for available tiles...";
+        QPair<int, int> foundTile = findFirstAvailableTile(m_currentZoom);
+        if (foundTile.first >= 0) {
+            tileX = foundTile.first;
+            tmsY = foundTile.second;
+            qDebug() << "resetView: using first available tile:" << tileX << tmsY;
+        }
+    }
+    
+    // Центрируем вид на выбранном тайле
+    // Позиция тайла в пикселях (для TMS)
+    double pixelX = tileX * m_tileSize;
+    double pixelY = ((1 << m_currentZoom) * m_tileSize) - (tmsY + 1) * m_tileSize;
+    
+    // Центрируем: смещение должно быть таким, чтобы центр виджета совпадал с центром тайла
+    m_offset = QPointF(-pixelX + (m_viewportSize.width() - m_tileSize) / 2.0,
+                       -pixelY + (m_viewportSize.height() - m_tileSize) / 2.0);
 
     // Очищаем кэш загруженных тайлов при сбросе вида
     m_loadedTiles.clear();
