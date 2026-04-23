@@ -3,100 +3,104 @@
 
 #include <QWidget>
 #include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QSqlError>
 #include <QMap>
-#include <QPair>
-#include <QPixmap>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QScrollArea>
+#include <QPoint>
+#include <QSize>
+#include <QImage>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QSet>
+#include <QDebug>
+#include <limits>
 
-class TileLoader;
+// Структура ключа тайла
+struct TileKey {
+    int z, x, y;
+
+    TileKey() : z(0), x(0), y(0) {}
+    TileKey(int _z, int _x, int _y) : z(_z), x(_x), y(_y) {}
+
+    bool operator==(const TileKey &other) const {
+        return z == other.z && x == other.x && y == other.y;
+    }
+
+    bool operator<(const TileKey &other) const {
+        if (z != other.z) return z < other.z;
+        if (x != other.x) return x < other.x;
+        return y < other.y;
+    }
+};
+
+// Функция хеширования
+inline uint qHash(const TileKey &key, uint seed = 0) {
+    return ::qHash(key.z, seed) ^ ::qHash(key.x, seed) ^ ::qHash(key.y, seed);
+}
 
 class MBTilesViewer : public QWidget
 {
     Q_OBJECT
-
 public:
     explicit MBTilesViewer(QWidget *parent = nullptr);
-    bool openMBTiles(const QString &filename);
-    void paintMapWidget(QPaintEvent *event);
     ~MBTilesViewer();
 
-public slots:
-    void openFileDialog();
+    void openFile(const QString &filePath);
+    QString getMetadata(const QString &name);
+    int getMinZoom();
+    int getMaxZoom();
+signals:
+    // Сигнал больше не нужен для синхронной загрузки, но оставим для совместимости если потребуется асинхронность
+    void tileLoaded(int z, int x, int y, const QImage& img);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override;
-    void showEvent(QShowEvent *event) override;
 
 private slots:
-    void onTileLoaded(int zoom, int x, int y, const QImage& tileImage);
+    void onTileLoaded(int z, int x, int y, const QImage &img);
 
 private:
-    QSqlDatabase m_database;
-    TileLoader *m_tileLoader;
-    QPointF m_offset;
-    QMap<QPair<int, QPair<int, int>>, QPixmap> m_loadedTiles;
-    bool m_databaseReady = false;
-    int m_minZoom = 0;  // Кэш минимального зума
-    int m_maxZoom = 17; // Кэш максимального зума
-    const int m_tileSize = 256; // Фиксированный размер тайла
-    QSize m_viewportSize;       // Размер области просмотра
-    int m_currentZoom = 0;      // Текущий уровень зума
+    struct TileBounds {
+        int minX = std::numeric_limits<int>::max();
+        int maxX = std::numeric_limits<int>::min();
+        int minY = std::numeric_limits<int>::max();
+        int maxY = std::numeric_limits<int>::min();
+        bool isValid() const { return minX <= maxX && minY <= maxY; }
+    };
 
-    // UI-элементы
-    QPushButton *m_openButton;
-    QVBoxLayout *m_layout;
-    QScrollArea *m_scrollArea;
-    QWidget *m_mapWidget;
-
-    QRectF getVisibleTileRect(int currentZoom, const QSize& viewportSize,
-                           const QPointF& offset, int tileSize);
-    void updateViewport();
-    int getMinZoom() const;
-    int getMaxZoom() const;
-    bool isTileAvailable(int zoom, int x, int y);
-    void loadParentTile(int zoom, int x, int y, int recursionDepth);
-    QPointF tileToPixel(int x, int y, int zoom);
-    QPair<int, int> pixelToTile(const QPointF &pos, int zoom) const;
-    void drawTiles(QPainter *painter);
-    void connectTileLoader();
-    void setupUI();
-    void setupMapWidget();
     void resetView();
-    void debugDatabaseContents();
-    void debugCoordinateSystem();
-    QPair<int, int> findFirstAvailableTile(int zoom);
+    void updateViewport();
+    void loadTile(int z, int x, int y);
+    QRectF getVisibleTileRect();
+    QPointF tileToPixel(int x, int y); // Убрали z, он не нужен для расчета пикселей
+    void scanAvailableTiles();
 
-    // Вспомогательные функции для работы с БД
-    bool checkDatabaseStructure();
-    bool reopenDatabase();
-    void loadVisibleTiles(const QRectF& visibleRect, int zoom);
-    bool ensureDatabaseConnection();
-    void loadChildTiles(int zoom, int x, int y);
+    // Поиск лучшего начального зума и позиции
+    void calculateInitialView();
 
-    // Новые методы для корректной работы с TMS-координатами
-    int tmsToGoogleY(int y, int zoom) const;
-    int googleToTmsY(int y, int zoom) const;
-};
+    QSqlDatabase m_db;
+    bool m_dbReady;
 
-// Вложенный класс MapWidget
-class MapWidget : public QWidget
-{
-    Q_OBJECT
-public:
-    explicit MapWidget(MBTilesViewer *parent) : QWidget(parent), m_parent(parent) {}
+    int m_currentZoom;
+    int m_minZoom;
+    int m_maxZoom;
+    int m_tileSize;
 
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        m_parent->paintMapWidget(event);
-    }
+    QPointF m_offset;
+    QPoint m_lastMousePos;
 
-private:
-    MBTilesViewer *m_parent;
+    QMap<TileKey, QImage> m_tileCache;
+    QSet<TileKey> m_availableTiles;
+
+    // Границы доступных тайлов по зумам
+    QMap<int, TileBounds> m_zoomBounds;
+
+    QString m_scheme;
 };
 
 #endif // MBTILESVIEWER_H

@@ -1,24 +1,39 @@
-#include "mainwindow.h"
-#include "mbtilesviewer.h"
-
+// main.cpp
 #include <QApplication>
-#include <QDebug>
-#include <QFileInfo>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QFileDialog>
+#include <QVBoxLayout>
+#include <QWidget>
+#include "mbtilesviewer.h"
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
-    MBTilesViewer viewer;
-    viewer.resize(800, 600);
-    viewer.show();
-    
-    // Автоматически открываем тестовый файл если он существует
-    QString testFile = "/workspace/test_map.mbtiles";
-    QFileInfo fi(testFile);
-    if (fi.exists()) {
-        qDebug() << "Auto-opening test file:" << testFile;
-        viewer.openMBTiles(testFile);
-    }
-    
-    return a.exec();
+    QApplication app(argc, argv);
+
+    QMainWindow window;
+    window.setWindowTitle("Simple GIS - MBTiles Viewer");
+    window.resize(1024, 768);
+
+    QWidget *centralWidget = new QWidget(&window);
+    QVBoxLayout *layout = new QVBoxLayout(centralWidget);
+
+    QPushButton *btnOpen = new QPushButton("Open MBTiles File");
+    MBTilesViewer *viewer = new MBTilesViewer();
+
+    layout->addWidget(btnOpen);
+    layout->addWidget(viewer);
+
+    window.setCentralWidget(centralWidget);
+    window.show();
+
+    // Исправленная лямбда: захватываем viewer по указателю, используем её как родителя для диалога
+    QObject::connect(btnOpen, &QPushButton::clicked, [viewer]() {
+        QString fileName = QFileDialog::getOpenFileName(viewer, "Open MBTiles", "", "MBTiles Files (*.mbtiles)");
+        if (!fileName.isEmpty()) {
+            viewer->openFile(fileName);
+        }
+    });
+
+    return app.exec();
 }
