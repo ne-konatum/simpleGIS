@@ -88,6 +88,9 @@ private:
     
     // Конвертация пиксельных координат в географические (долгота/широта)
     void pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude);
+    
+    // Проверка загружена ли карта
+    bool isMapLoaded() const { return m_dbReady && !m_db.databaseName().isEmpty(); }
 
     QSqlDatabase m_db;
     bool m_dbReady;
