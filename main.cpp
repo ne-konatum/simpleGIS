@@ -6,12 +6,13 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include "mbtilesviewer.h"
+#include "mainwindow.h"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    QMainWindow window;
+    MainWindow window;
     window.setWindowTitle("Simple GIS - MBTiles Viewer");
     window.resize(1024, 768);
 
