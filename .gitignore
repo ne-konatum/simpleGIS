@@ -13,34 +13,35 @@ venv/
 .venv/
 __pycache__/
 *.egg-info/
-dist/
 build/
-target/
-.gradle/
+dist/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
+
+# Editors
+.vscode/
+.idea/
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Coverage
+# Coverage and testing
+.coverage
 coverage/
 htmlcov/
-.coverage
 
-# System files
-.DS_Store
-Thumbs.db
+# Gradle
+.gradle/
+target/
+
+# MyPy
+.mypy_cache/
+
+# PyTest
+.pytest_cache/
 ```

@@ -15,6 +15,7 @@ MBTilesViewer::MBTilesViewer(QWidget *parent)
     , m_maxZoom(18)
     , m_tileSize(256)
 {
+    setMouseTracking(true); // Включаем отслеживание движения мыши даже без нажатия кнопок
     m_db = QSqlDatabase::addDatabase("QSQLITE", "MBTILES_CONNECTION");
     // При синхронной загрузке сигнал не обязателен, но оставим подключение
     connect(this, &MBTilesViewer::tileLoaded, this, &MBTilesViewer::onTileLoaded, Qt::QueuedConnection);
