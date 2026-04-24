@@ -92,9 +92,8 @@ MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
     GKCoords result;
     
     // Определяем номер зоны (6-градусная зона)
-    // Формула: зона = floor((lon + 3) / 6) + 1, но с коррекцией для отрицательных долгот
-    // Для долготы 37.618335: (37.618335 + 3) / 6 = 6.77 -> зона 7 (осевой меридиан 39°)
-    result.zone = static_cast<int>(std::floor((lon + 3.0) / 6.0)) + 1;
+    // Для долготы 37.618335: 37.61/6 = 6.27 -> floor = 6 -> зона = 6+1 = 7
+    result.zone = static_cast<int>(std::floor(lon / 6.0)) + 1;
     if (result.zone < 1) result.zone = 1;
     if (result.zone > 60) result.zone = 60;
     
@@ -103,54 +102,57 @@ MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
     double L0 = 6.0 * result.zone - 3.0;
     
     // Параметры эллипсоида Красовского (СК-42)
-    double a = m_krasovsky.a;
-    double e2 = m_krasovsky.e2;
-    double e_prime2 = e2 / (1.0 - e2); // Второй квадрат эксцентриситета
+    double a = m_krasovsky.a;        // 6378245.0 м
+    double f = 1.0 / 298.3;          // Сжатие
+    double e2 = 2 * f - f * f;       // Квадрат первого эксцентриситета
+    double e2_prime = e2 / (1.0 - e2); // Квадрат второго эксцентриситета
     
     // Переводим в радианы
-    double phi = toRadians(lat);
-    double lambda = toRadians(lon);
-    double lambda0 = toRadians(L0);
+    double B = toRadians(lat);       // Широта
+    double L = toRadians(lon);       // Долгота
+    double L0_rad = toRadians(L0);   // Осевой меридиан
+    double l = L - L0_rad;           // Разность долгот
     
-    // Разность долгот
-    double dLambda = lambda - lambda0;
-    
-    // Вычисляем вспомогательные величины
-    double sinPhi = sin(phi);
-    double cosPhi = cos(phi);
-    double tanPhi = tan(phi);
+    // Вспомогательные величины
+    double sinB = sin(B);
+    double cosB = cos(B);
+    double tanB = tan(B);
     
     // Радиус кривизны в первом вертикале
-    double N = a / sqrt(1.0 - e2 * sinPhi * sinPhi);
+    double W = sqrt(1.0 - e2 * sinB * sinB);
+    double N = a / W;
     
-    // Меридианная дуга от экватора (формула для эллипсоида)
-    double A0 = 1.0 - e2 / 4.0 - 3.0 * e2 * e2 / 64.0 - 5.0 * e2 * e2 * e2 / 256.0;
-    double A2 = 3.0 / 8.0 * (e2 + e2 * e2 / 4.0 + 15.0 * e2 * e2 * e2 / 128.0);
-    double A4 = 15.0 / 256.0 * (e2 * e2 + 3.0 * e2 * e2 * e2 / 4.0);
-    double A6 = 35.0 * e2 * e2 * e2 / 3072.0;
+    // Длина дуги меридиана от экватора до широты B (ряд Бесселя для эллипсоида Красовского)
+    // Коэффициенты ряда
+    double A0 = 1.0 + 3.0/4.0*e2 + 45.0/64.0*e2*e2 + 175.0/256.0*e2*e2*e2 + 11025.0/16384.0*e2*e2*e2*e2;
+    double A2 = 3.0/4.0*e2 + 15.0/16.0*e2*e2 + 525.0/512.0*e2*e2*e2 + 2205.0/2048.0*e2*e2*e2*e2;
+    double A4 = 15.0/64.0*e2*e2 + 105.0/256.0*e2*e2*e2 + 2205.0/4096.0*e2*e2*e2*e2;
+    double A6 = 35.0/512.0*e2*e2*e2 + 315.0/2048.0*e2*e2*e2*e2;
+    double A8 = 315.0/16384.0*e2*e2*e2*e2;
     
-    double M = a * (A0 * phi - A2 * sin(2.0 * phi) + A4 * sin(4.0 * phi) - A6 * sin(6.0 * phi));
+    // Меридианная дуга X0
+    double X0 = a * (A0 * B - A2 * sin(2*B) + A4 * sin(4*B) - A6 * sin(6*B) + A8 * sin(8*B));
     
-    // Коэффициенты ряда для проекции Гаусса-Крюгера
-    // X координата (северное направление)
-    double c2 = N * sinPhi * cosPhi / 2.0;
-    double c4 = N * sinPhi * pow(cosPhi, 3) / 24.0 * (5.0 - tanPhi * tanPhi + 9.0 * e_prime2 * cosPhi * cosPhi + 4.0 * e_prime2 * e_prime2 * pow(cosPhi, 4));
-    double c6 = N * sinPhi * pow(cosPhi, 5) / 720.0 * (61.0 - 58.0 * tanPhi * tanPhi + tanPhi * tanPhi * tanPhi * tanPhi + 270.0 * e_prime2 * cosPhi * cosPhi - 330.0 * e_prime2 * cosPhi * cosPhi * tanPhi * tanPhi);
+    // Коэффициенты для рядов Гаусса-Крюгера
+    double t = tanB;
+    double eta2 = e2_prime * cosB * cosB;
     
-    // Y координата (восточное направление)
-    double d2 = N * cosPhi * cosPhi / 2.0;
-    double d4 = N * pow(cosPhi, 4) / 24.0 * (1.0 - tanPhi * tanPhi + e_prime2 * cosPhi * cosPhi);
-    double d6 = N * pow(cosPhi, 6) / 720.0 * (5.0 - 18.0 * tanPhi * tanPhi + tanPhi * tanPhi * tanPhi * tanPhi + 14.0 * e_prime2 * cosPhi * cosPhi - 58.0 * e_prime2 * cosPhi * cosPhi * tanPhi * tanPhi);
+    // Вычисление абсциссы X (северное направление)
+    double c2 = (N * t * cosB * cosB) / 2.0;
+    double c4 = (N * t * pow(cosB, 4)) / 24.0 * (5.0 - t*t + 9.0*eta2 + 4.0*eta2*eta2);
+    double c6 = (N * t * pow(cosB, 6)) / 720.0 * (61.0 - 58.0*t*t + pow(t,4) + 270.0*eta2 - 330.0*eta2*t*t);
     
-    // Вычисляем координаты X и Y
-    result.x = M + c2 * dLambda * dLambda + c4 * pow(dLambda, 4) + c6 * pow(dLambda, 6);
-    result.y = d2 * dLambda + d4 * pow(dLambda, 3) + d6 * pow(dLambda, 5);
+    result.x = X0 + c2 * l * l + c4 * pow(l, 4) + c6 * pow(l, 6);
     
-    // Добавляем ложное смещение 500000 м и номер зоны * 1000000
-    // Итоговый формат Y: Зона * 1000000 + (500000 + смещение)
-    // Если точка западнее осевого меридиана, смещение отрицательное
-    result.y += 500000.0;
-    result.y = result.zone * 1000000.0 + result.y;
+    // Вычисление ординаты Y (восточное направление)
+    double d1 = N * cosB;
+    double d3 = (N * pow(cosB, 3)) / 6.0 * (1.0 - t*t + eta2);
+    double d5 = (N * pow(cosB, 5)) / 120.0 * (5.0 - 18.0*t*t + pow(t,4) + 14.0*eta2 - 58.0*eta2*t*t);
+    
+    result.y = d1 * l + d3 * pow(l, 3) + d5 * pow(l, 5);
+    
+    // Добавляем ложное смещение: 500000 м + номер зоны * 1000000
+    result.y = result.y + 500000.0 + (result.zone * 1000000.0);
     
     return result;
 }
