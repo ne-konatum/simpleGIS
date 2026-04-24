@@ -51,6 +51,10 @@ public:
     QString getMetadata(const QString &name);
     int getMinZoom();
     int getMaxZoom();
+    
+    // Проверка загружена ли карта
+    bool isMapLoaded() const { return m_dbReady && !m_db.databaseName().isEmpty(); }
+
 signals:
     // Сигнал больше не нужен для синхронной загрузки, но оставим для совместимости если потребуется асинхронность
     void tileLoaded(int z, int x, int y, const QImage& img);
@@ -88,9 +92,6 @@ private:
     
     // Конвертация пиксельных координат в географические (долгота/широта)
     void pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude);
-    
-    // Проверка загружена ли карта
-    bool isMapLoaded() const { return m_dbReady && !m_db.databaseName().isEmpty(); }
 
     QSqlDatabase m_db;
     bool m_dbReady;
