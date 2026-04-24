@@ -3,6 +3,7 @@
 #include "mbtilesviewer.h"
 #include <QVBoxLayout>
 #include <QStatusBar>
+#include <QFrame>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -16,8 +17,12 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Создаем метку для отображения координат в статусной строке
     m_coordLabel = new QLabel(this);
-    m_coordLabel->setMinimumWidth(200);
+    m_coordLabel->setMinimumWidth(250);
+    m_coordLabel->setFrameShape(QFrame::Panel);
+    m_coordLabel->setFrameShadow(QFrame::Sunken);
+    m_coordLabel->setText("Lon: ---, Lat: ---");
     statusBar()->addPermanentWidget(m_coordLabel);
+    statusBar()->show();
     
     // Подключаем сигнал координат к слоту обновления метки
     connect(m_viewer, &MBTilesViewer::cursorCoordinatesChanged, 
