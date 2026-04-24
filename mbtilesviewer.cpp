@@ -5,6 +5,7 @@
 #include <QColor>
 #include <QtMath>
 #include <algorithm>
+#include <cmath>
 
 MBTilesViewer::MBTilesViewer(QWidget *parent)
     : QWidget(parent)
@@ -306,6 +307,12 @@ void MBTilesViewer::mouseMoveEvent(QMouseEvent *event) {
         m_lastMousePos = event->pos();
         updateViewport();
     }
+    
+    // Конвертируем позицию курсора в географические координаты и отправляем сигнал
+    double longitude = 0.0;
+    double latitude = 0.0;
+    pixelToLonLat(event->pos(), longitude, latitude);
+    emit cursorCoordinatesChanged(longitude, latitude);
 }
 
 void MBTilesViewer::wheelEvent(QWheelEvent *event) {
@@ -335,4 +342,27 @@ void MBTilesViewer::wheelEvent(QWheelEvent *event) {
         qDebug() << "Current zoom:" << m_currentZoom;
         updateViewport();
     }
+}
+
+// Конвертация пиксельных координат курсора в географические координаты (долгота/широта)
+void MBTilesViewer::pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude) {
+    // Получаем координаты тайла в пикселях с учетом смещения
+    double pixelX = pixelPos.x() + m_offset.x();
+    double pixelY = pixelPos.y() + m_offset.y();
+    
+    // Конвертируем пиксели в координаты тайла
+    double tileX = pixelX / m_tileSize;
+    double tileY = pixelY / m_tileSize;
+    
+    // Конвертируем координаты тайла в нормализованные координаты мира (0..1)
+    double n = (1 << m_currentZoom); // 2^zoom
+    double xNorm = tileX / n;
+    double yNorm = tileY / n;
+    
+    // Конвертируем в долготу
+    longitude = xNorm * 360.0 - 180.0;
+    
+    // Конвертируем в широту (используя проекцию Меркатора)
+    double latRad = std::atan(std::sinh(M_PI * (1.0 - 2.0 * yNorm)));
+    latitude = latRad * 180.0 / M_PI;
 }

@@ -54,6 +54,9 @@ public:
 signals:
     // Сигнал больше не нужен для синхронной загрузки, но оставим для совместимости если потребуется асинхронность
     void tileLoaded(int z, int x, int y, const QImage& img);
+    
+    // Сигнал для обновления координат курсора
+    void cursorCoordinatesChanged(double longitude, double latitude);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -79,9 +82,12 @@ private:
     QRectF getVisibleTileRect();
     QPointF tileToPixel(int x, int y); // Убрали z, он не нужен для расчета пикселей
     void scanAvailableTiles();
-
+    
     // Поиск лучшего начального зума и позиции
     void calculateInitialView();
+    
+    // Конвертация пиксельных координат в географические (долгота/широта)
+    void pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude);
 
     QSqlDatabase m_db;
     bool m_dbReady;
