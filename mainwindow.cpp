@@ -59,6 +59,12 @@ MainWindow::~MainWindow()
 
 void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
 {
+    // Проверяем, загружена ли карта
+    if (!m_viewer || !m_viewer->isMapLoaded()) {
+        m_coordLabel->setText("Нет данных (карта не загружена)");
+        return;
+    }
+    
     // Конвертируем в СК-42 Гаусс-Крюгер
     GKCoords gk = wgs84ToSK42GK(longitude, latitude);
     
@@ -66,8 +72,8 @@ void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
     m_coordLabel->setText(QString("WGS-84: Lon: %1°, Lat: %2° | СК-42 (GK): X: %3 м, Y: %4 (зона %5)")
         .arg(longitude, 0, 'f', 6)
         .arg(latitude, 0, 'f', 6)
-        .arg(gk.x, 0, 'f', 2)
-        .arg(gk.y, 0, 'f', 2)
+        .arg(gk.x, 0, 'f', 3)
+        .arg(gk.y, 0, 'f', 3)
         .arg(gk.zone));
 }
 
@@ -86,12 +92,15 @@ MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
     GKCoords result;
     
     // Определяем номер зоны (6-градусная зона)
-    result.zone = static_cast<int>((lon + 180.0) / 6.0) + 1;
+    // Формула: зона = floor((lon + 3) / 6) + 1, но с коррекцией для отрицательных долгот
+    // Для долготы 37.618335: (37.618335 + 3) / 6 = 6.77 -> зона 7 (осевой меридиан 39°)
+    result.zone = static_cast<int>(std::floor((lon + 3.0) / 6.0)) + 1;
     if (result.zone < 1) result.zone = 1;
     if (result.zone > 60) result.zone = 60;
     
-    // Долгота осевого меридиана зоны
-    double L0 = (result.zone - 1) * 6.0 - 180.0 + 3.0;
+    // Долгота осевого меридиана зоны: L0 = 6 * zone - 3
+    // Для зоны 7: L0 = 6*7 - 3 = 39°
+    double L0 = 6.0 * result.zone - 3.0;
     
     // Параметры эллипсоида Красовского (СК-42)
     double a = m_krasovsky.a;
@@ -123,10 +132,12 @@ MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
     double M = a * (A0 * phi - A2 * sin(2.0 * phi) + A4 * sin(4.0 * phi) - A6 * sin(6.0 * phi));
     
     // Коэффициенты ряда для проекции Гаусса-Крюгера
+    // X координата (северное направление)
     double c2 = N * sinPhi * cosPhi / 2.0;
     double c4 = N * sinPhi * pow(cosPhi, 3) / 24.0 * (5.0 - tanPhi * tanPhi + 9.0 * e_prime2 * cosPhi * cosPhi + 4.0 * e_prime2 * e_prime2 * pow(cosPhi, 4));
     double c6 = N * sinPhi * pow(cosPhi, 5) / 720.0 * (61.0 - 58.0 * tanPhi * tanPhi + tanPhi * tanPhi * tanPhi * tanPhi + 270.0 * e_prime2 * cosPhi * cosPhi - 330.0 * e_prime2 * cosPhi * cosPhi * tanPhi * tanPhi);
     
+    // Y координата (восточное направление)
     double d2 = N * cosPhi * cosPhi / 2.0;
     double d4 = N * pow(cosPhi, 4) / 24.0 * (1.0 - tanPhi * tanPhi + e_prime2 * cosPhi * cosPhi);
     double d6 = N * pow(cosPhi, 6) / 720.0 * (5.0 - 18.0 * tanPhi * tanPhi + tanPhi * tanPhi * tanPhi * tanPhi + 14.0 * e_prime2 * cosPhi * cosPhi - 58.0 * e_prime2 * cosPhi * cosPhi * tanPhi * tanPhi);
@@ -135,9 +146,11 @@ MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
     result.x = M + c2 * dLambda * dLambda + c4 * pow(dLambda, 4) + c6 * pow(dLambda, 6);
     result.y = d2 * dLambda + d4 * pow(dLambda, 3) + d6 * pow(dLambda, 5);
     
-    // Добавляем номер зоны к координате Y (смещение на 500000 м + номер зоны * 1000000)
+    // Добавляем ложное смещение 500000 м и номер зоны * 1000000
+    // Итоговый формат Y: Зона * 1000000 + (500000 + смещение)
+    // Если точка западнее осевого меридиана, смещение отрицательное
     result.y += 500000.0;
-    result.y += result.zone * 1000000.0;
+    result.y = result.zone * 1000000.0 + result.y;
     
     return result;
 }
