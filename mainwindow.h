@@ -30,15 +30,21 @@ private:
         double e2; // Квадрат эксцентриситета
     };
 
-    // Структура для координат Гаусса-Крюгера
-    struct GKCoords {
-        double x; // Север (метры)
-        double y; // Восток (метры, с номером зоны)
-        int zone; // Номер зоны
+    // Структура для параметров трансформации датума
+    struct TransformationParams {
+        double dx;
+        double dy;
+        double dz;
     };
 
     // Методы конвертации
-    GKCoords wgs84ToSK42GK(double lon, double lat);
+    void wgs84ToSK42(double lon, double lat, double &x, double &y, int &zone);
+
+    // Вспомогательные методы преобразования координат
+    void geodeticToGeocentric(double lat, double lon, double h, const Ellipsoid &ell, double &X, double &Y, double &Z);
+    // Исправленная сигнатура: параметры эллипсоида перед выходными аргументами
+    void geocentricToGeodetic(double X, double Y, double Z, const Ellipsoid &ell, double &lat, double &lon, double &h);
+
     double toRadians(double deg);
     double toDegrees(double rad);
 
@@ -46,9 +52,12 @@ private:
     MBTilesViewer *m_viewer;
     QLabel *m_coordLabel;
     QPushButton *m_btnOpen;
-    
+
     // Параметры эллипсоидов
     const Ellipsoid m_wgs84;
     const Ellipsoid m_krasovsky; // Для СК-42
+
+    // Параметры трансформации (константные)
+    const TransformationParams m_transformParams;
 };
 #endif // MAINWINDOW_H

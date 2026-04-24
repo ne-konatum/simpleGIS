@@ -6,49 +6,49 @@
 #include <QFrame>
 #include <QFileDialog>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    // Инициализация параметров эллипсоидов
-    // WGS-84: a = 6378137.0 м, f = 1/298.257223563
+    // WGS-84: a = 6378137.0 м, f = 1/298.257223563 -> e2 ≈ 0.00669437999
     , m_wgs84{6378137.0, 0.00669437999014}
-    // СК-42 (Красовский): a = 6378245.0 м, f = 1/298.3
+    // СК-42 (Красовский): a = 6378245.0 м, f = 1/298.3 -> e2 ≈ 0.00669342162
     , m_krasovsky{6378245.0, 0.00669342162297}
+    // Инициализация параметров трансформации (сдвиги)
+    , m_transformParams{-26.0, -125.0, -7.0}
 {
     ui->setupUi(this);
-    
-    // Создаем центральный виджет с layout
+
     QWidget *centralWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(centralWidget);
-    
-    // Создаем кнопку для открытия файла
+
     m_btnOpen = new QPushButton("Open MBTiles File", this);
     connect(m_btnOpen, &QPushButton::clicked, this, &MainWindow::openFile);
-    
-    // Создаем виджет карты
+
     m_viewer = new MBTilesViewer(this);
-    
+
     layout->addWidget(m_btnOpen);
     layout->addWidget(m_viewer);
-    
+
     setCentralWidget(centralWidget);
-    
-    // Устанавливаем заголовок и размер окна
     setWindowTitle("Simple GIS - MBTiles Viewer");
     resize(1024, 768);
-    
-    // Создаем метку для отображения координат в статусной строке
+
     m_coordLabel = new QLabel(this);
-    m_coordLabel->setMinimumWidth(450);
+    m_coordLabel->setMinimumWidth(600);
     m_coordLabel->setFrameShape(QFrame::Panel);
     m_coordLabel->setFrameShadow(QFrame::Sunken);
     m_coordLabel->setText("WGS-84: Lon: ---, Lat: --- | СК-42 (GK): X: ---, Y: ---");
     statusBar()->addPermanentWidget(m_coordLabel);
     statusBar()->show();
-    
-    // Подключаем сигнал координат к слоту обновления метки
-    connect(m_viewer, &MBTilesViewer::cursorCoordinatesChanged, 
+
+    connect(m_viewer, &MBTilesViewer::cursorCoordinatesChanged,
             this, &MainWindow::onCursorCoordinatesChanged);
 }
 
@@ -59,22 +59,24 @@ MainWindow::~MainWindow()
 
 void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
 {
-    // Проверяем, загружена ли карта
     if (!m_viewer || !m_viewer->isMapLoaded()) {
         m_coordLabel->setText("Нет данных (карта не загружена)");
         return;
     }
-    
-    // Конвертируем в СК-42 Гаусс-Крюгер
-    GKCoords gk = wgs84ToSK42GK(longitude, latitude);
-    
-    // Форматируем и отображаем координаты
-    m_coordLabel->setText(QString("WGS-84: Lon: %1°, Lat: %2° | СК-42 (GK): X: %3 м, Y: %4 (зона %5)")
-        .arg(longitude, 0, 'f', 6)
-        .arg(latitude, 0, 'f', 6)
-        .arg(gk.x, 0, 'f', 3)
-        .arg(gk.y, 0, 'f', 3)
-        .arg(gk.zone));
+
+    double sk42_x, sk42_y;
+    int zone;
+    wgs84ToSK42(longitude, latitude, sk42_x, sk42_y, zone);
+
+    QString text = QString("WGS-84: Lon: %1, Lat: %2 | "
+                           "СК-42 (Гаусс-Крюгер): X: %3, Y: %4 (зона %5)")
+                       .arg(longitude, 0, 'f', 6)
+                       .arg(latitude, 0, 'f', 6)
+                       .arg(sk42_x, 0, 'f', 3)
+                       .arg(sk42_y, 0, 'f', 3)
+                       .arg(zone);
+
+    m_coordLabel->setText(text);
 }
 
 double MainWindow::toRadians(double deg)
@@ -87,74 +89,114 @@ double MainWindow::toDegrees(double rad)
     return rad * 180.0 / M_PI;
 }
 
-MainWindow::GKCoords MainWindow::wgs84ToSK42GK(double lon, double lat)
+void MainWindow::geodeticToGeocentric(double lat, double lon, double h, const Ellipsoid &ell, double &X, double &Y, double &Z)
 {
-    GKCoords result;
-    
-    // Определяем номер зоны (6-градусная зона)
-    // Для долготы 37.618335: 37.61/6 = 6.27 -> floor = 6 -> зона = 6+1 = 7
-    result.zone = static_cast<int>(std::floor(lon / 6.0)) + 1;
-    if (result.zone < 1) result.zone = 1;
-    if (result.zone > 60) result.zone = 60;
-    
-    // Долгота осевого меридиана зоны: L0 = 6 * zone - 3
-    // Для зоны 7: L0 = 6*7 - 3 = 39°
-    double L0 = 6.0 * result.zone - 3.0;
-    
-    // Параметры эллипсоида Красовского (СК-42)
-    double a = m_krasovsky.a;        // 6378245.0 м
-    double f = 1.0 / 298.3;          // Сжатие
-    double e2 = 2 * f - f * f;       // Квадрат первого эксцентриситета
-    double e2_prime = e2 / (1.0 - e2); // Квадрат второго эксцентриситета
-    
-    // Переводим в радианы
-    double B = toRadians(lat);       // Широта
-    double L = toRadians(lon);       // Долгота
-    double L0_rad = toRadians(L0);   // Осевой меридиан
-    double l = L - L0_rad;           // Разность долгот
-    
-    // Вспомогательные величины
-    double sinB = sin(B);
-    double cosB = cos(B);
-    double tanB = tan(B);
-    
-    // Радиус кривизны в первом вертикале
-    double W = sqrt(1.0 - e2 * sinB * sinB);
-    double N = a / W;
-    
-    // Длина дуги меридиана от экватора до широты B (ряд Бесселя для эллипсоида Красовского)
-    // Коэффициенты ряда
-    double A0 = 1.0 + 3.0/4.0*e2 + 45.0/64.0*e2*e2 + 175.0/256.0*e2*e2*e2 + 11025.0/16384.0*e2*e2*e2*e2;
-    double A2 = 3.0/4.0*e2 + 15.0/16.0*e2*e2 + 525.0/512.0*e2*e2*e2 + 2205.0/2048.0*e2*e2*e2*e2;
-    double A4 = 15.0/64.0*e2*e2 + 105.0/256.0*e2*e2*e2 + 2205.0/4096.0*e2*e2*e2*e2;
-    double A6 = 35.0/512.0*e2*e2*e2 + 315.0/2048.0*e2*e2*e2*e2;
-    double A8 = 315.0/16384.0*e2*e2*e2*e2;
-    
-    // Меридианная дуга X0
-    double X0 = a * (A0 * B - A2 * sin(2*B) + A4 * sin(4*B) - A6 * sin(6*B) + A8 * sin(8*B));
-    
-    // Коэффициенты для рядов Гаусса-Крюгера
-    double t = tanB;
-    double eta2 = e2_prime * cosB * cosB;
-    
-    // Вычисление абсциссы X (северное направление)
-    double c2 = (N * t * cosB * cosB) / 2.0;
-    double c4 = (N * t * pow(cosB, 4)) / 24.0 * (5.0 - t*t + 9.0*eta2 + 4.0*eta2*eta2);
-    double c6 = (N * t * pow(cosB, 6)) / 720.0 * (61.0 - 58.0*t*t + pow(t,4) + 270.0*eta2 - 330.0*eta2*t*t);
-    
-    result.x = X0 + c2 * l * l + c4 * pow(l, 4) + c6 * pow(l, 6);
-    
-    // Вычисление ординаты Y (восточное направление)
-    double d1 = N * cosB;
-    double d3 = (N * pow(cosB, 3)) / 6.0 * (1.0 - t*t + eta2);
-    double d5 = (N * pow(cosB, 5)) / 120.0 * (5.0 - 18.0*t*t + pow(t,4) + 14.0*eta2 - 58.0*eta2*t*t);
-    
-    result.y = d1 * l + d3 * pow(l, 3) + d5 * pow(l, 5);
-    
-    // Добавляем ложное смещение: 500000 м + номер зоны * 1000000
-    result.y = result.y + 500000.0 + (result.zone * 1000000.0);
-    
-    return result;
+    double phi = toRadians(lat);
+    double lambda = toRadians(lon);
+
+    double sin_phi = std::sin(phi);
+    double cos_phi = std::cos(phi);
+    double sin_lambda = std::sin(lambda);
+    double cos_lambda = std::cos(lambda);
+
+    double N = ell.a / std::sqrt(1.0 - ell.e2 * sin_phi * sin_phi);
+
+    X = (N + h) * cos_phi * cos_lambda;
+    Y = (N + h) * cos_phi * sin_lambda;
+    Z = (N * (1.0 - ell.e2) + h) * sin_phi;
+}
+
+// Реализация с исправленной сигнатурой
+void MainWindow::geocentricToGeodetic(double X, double Y, double Z, const Ellipsoid &ell, double &lat, double &lon, double &h)
+{
+    double p = std::sqrt(X * X + Y * Y);
+
+    // Улучшенная формула Bowring
+    double theta = std::atan2(Z * ell.a, p * ell.a * std::sqrt(1.0 - ell.e2));
+
+    double sin_theta = std::sin(theta);
+    double cos_theta = std::cos(theta);
+
+    double lat_rad = std::atan2(Z + ell.a * ell.e2 * sin_theta * sin_theta * sin_theta,
+                                p - ell.a * ell.e2 * cos_theta * cos_theta * cos_theta);
+
+    lon = std::atan2(Y, X);
+
+    double sin_lat = std::sin(lat_rad);
+    double N = ell.a / std::sqrt(1.0 - ell.e2 * sin_lat * sin_lat);
+
+    h = p / std::cos(lat_rad) - N;
+
+    lat = toDegrees(lat_rad);
+    lon = toDegrees(lon);
+}
+
+void MainWindow::wgs84ToSK42(double lon, double lat, double &x, double &y, int &zone)
+{
+    // 1. Определение зоны
+    zone = static_cast<int>(std::floor(lon / 6.0)) + 1;
+    if (zone < 1) zone = 1;
+    if (zone > 60) zone = 60;
+
+    // Осевой меридиан: L0 = zone * 6 - 3
+    double L0 = zone * 6.0 - 3.0;
+
+    // 2. Трансформация датума WGS-84 -> Пулково-42
+    double X_wgs, Y_wgs, Z_wgs;
+    geodeticToGeocentric(lat, lon, 0.0, m_wgs84, X_wgs, Y_wgs, Z_wgs);
+
+    // Применяем сдвиги из константной структуры
+    double X_sk = X_wgs + m_transformParams.dx;
+    double Y_sk = Y_wgs + m_transformParams.dy;
+    double Z_sk = Z_wgs + m_transformParams.dz;
+
+    // Обратное преобразование в геодезические на эллипсоиде Красовского
+    double lat_sk, lon_sk, h_sk;
+    // Вызов с правильным порядком аргументов
+    geocentricToGeodetic(X_sk, Y_sk, Z_sk, m_krasovsky, lat_sk, lon_sk, h_sk);
+
+    // 3. Проекция Гаусса-Крюгера
+    double phi = toRadians(lat_sk);
+    double lambda = toRadians(lon_sk);
+    double lambda0 = toRadians(L0);
+
+    double dl = lambda - lambda0;
+
+    const double a = m_krasovsky.a;
+    const double e2 = m_krasovsky.e2;
+    const double e2_prime = e2 / (1.0 - e2);
+
+    double sin_phi = std::sin(phi);
+    double cos_phi = std::cos(phi);
+    double tan_phi = std::tan(phi);
+
+    double N = a / std::sqrt(1.0 - e2 * sin_phi * sin_phi);
+
+    // Длина дуги меридиана (ряд Бесселя)
+    double A0 = 1.0 - e2/4.0 - 3.0*e2*e2/64.0 - 5.0*e2*e2*e2/256.0;
+    double A2 = 3.0/8.0 * (e2 + e2*e2/4.0 + 15.0*e2*e2*e2/128.0);
+    double A4 = 15.0/256.0 * (e2*e2 + 3.0*e2*e2*e2/4.0);
+    double A6 = 35.0*e2*e2*e2/3072.0;
+
+    double X_meridian = a * (A0 * phi - A2 * std::sin(2.0*phi) + A4 * std::sin(4.0*phi) - A6 * std::sin(6.0*phi));
+
+    double t = tan_phi;
+    double eta2 = e2_prime * cos_phi * cos_phi;
+
+    // Ряды для проекции
+    // X
+    x = X_meridian +
+        (N * t / 2.0) * cos_phi * cos_phi * dl * dl +
+        (N * t / 24.0) * std::pow(cos_phi, 4) * (5.0 - t*t + 9.0*eta2 + 4.0*eta2*eta2) * std::pow(dl, 4);
+
+    // Y
+    y = N * cos_phi * dl +
+        (N / 6.0) * std::pow(cos_phi, 3) * (eta2 - t*t) * std::pow(dl, 3) +
+        (N / 120.0) * std::pow(cos_phi, 5) * (5.0 - 18.0*t*t + std::pow(t,4) + 14.0*eta2 - 58.0*t*t*eta2) * std::pow(dl, 5);
+
+    // Ложное смещение
+    y = y + 500000.0;
+    y = y + zone * 1000000.0;
 }
 
 void MainWindow::openFile()
@@ -164,4 +206,3 @@ void MainWindow::openFile()
         m_viewer->openFile(fileName);
     }
 }
-
