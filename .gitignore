@@ -1,36 +1,6 @@
 ```
-# Qt/MOC generated files
-moc_*.cpp
-moc_*.h
-moc_*.hpp
-qrc_*.cpp
-ui_*.h
-
-# QMake files
-.qmake.stash
-Makefile
-Makefile.*
-
-# Executables
-*.exe
+# Compiled and build artifacts
+*.o
+*.obj
 *.out
-simpleGIS
-
-# Build directories
-build/
-dist/
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
 ```
