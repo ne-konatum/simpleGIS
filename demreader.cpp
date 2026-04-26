@@ -36,19 +36,25 @@ bool DEMReader::openFile(const QString &filePath)
         return false;
     }
 
+    qDebug() << "DEMReader: File size:" << data.size() << "bytes";
+    
     m_filePath = filePath;
 
     // Пытаемся распарсить заголовок
+    qDebug() << "DEMReader: Parsing header...";
     if (!parseHeader(data)) {
         qDebug() << "DEMReader: Failed to parse header";
         return false;
     }
+    qDebug() << "DEMReader: Header parsed successfully";
 
     // Парсим данные высот
+    qDebug() << "DEMReader: Parsing elevation data...";
     if (!parseElevationData(data)) {
         qDebug() << "DEMReader: Failed to parse elevation data";
         return false;
     }
+    qDebug() << "DEMReader: Elevation data parsed successfully";
 
     m_isLoaded = true;
     qDebug() << "DEMReader: Successfully loaded DEM file:" << filePath;
@@ -91,6 +97,8 @@ bool DEMReader::getElevation(double latitude, double longitude, double &height) 
 
 bool DEMReader::parseHeader(const QByteArray &data)
 {
+    qDebug() << "DEMReader: parseHeader called, data size:" << data.size();
+    
     QTextStream stream(data);
     stream.setCodec("UTF-8");
 
@@ -98,6 +106,7 @@ bool DEMReader::parseHeader(const QByteArray &data)
     // Пытаемся найти ключевые поля в первых строках файла
     
     QString content = QString::fromUtf8(data.left(1024));
+    qDebug() << "DEMReader: First 1024 bytes as string:" << content.left(200);
     
     // Пробуем различные форматы DEM файлов
     
@@ -113,29 +122,51 @@ bool DEMReader::parseHeader(const QByteArray &data)
     QRegularExpressionMatch match;
 
     match = xminRx.match(content);
-    if (match.hasMatch()) m_header.xmin = match.captured(1).toDouble();
+    if (match.hasMatch()) {
+        m_header.xmin = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found XMIN:" << m_header.xmin;
+    }
     
     match = xmaxRx.match(content);
-    if (match.hasMatch()) m_header.xmax = match.captured(1).toDouble();
+    if (match.hasMatch()) {
+        m_header.xmax = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found XMAX:" << m_header.xmax;
+    }
     
     match = yminRx.match(content);
-    if (match.hasMatch()) m_header.ymin = match.captured(1).toDouble();
+    if (match.hasMatch()) {
+        m_header.ymin = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found YMIN:" << m_header.ymin;
+    }
     
     match = ymaxRx.match(content);
-    if (match.hasMatch()) m_header.ymax = match.captured(1).toDouble();
+    if (match.hasMatch()) {
+        m_header.ymax = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found YMAX:" << m_header.ymax;
+    }
     
     match = rowsRx.match(content);
-    if (match.hasMatch()) m_header.rows = match.captured(1).toInt();
+    if (match.hasMatch()) {
+        m_header.rows = match.captured(1).toInt();
+        qDebug() << "DEMReader: Found ROWS:" << m_header.rows;
+    }
     
     match = colsRx.match(content);
-    if (match.hasMatch()) m_header.cols = match.captured(1).toInt();
+    if (match.hasMatch()) {
+        m_header.cols = match.captured(1).toInt();
+        qDebug() << "DEMReader: Found COLS:" << m_header.cols;
+    }
     
     match = cellSizeRx.match(content);
-    if (match.hasMatch()) m_header.cellSize = match.captured(1).toDouble();
+    if (match.hasMatch()) {
+        m_header.cellSize = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found CELLSIZE:" << m_header.cellSize;
+    }
 
     // Если не нашли все параметры, пробуем альтернативный парсинг
     // Некоторые DEM файлы имеют бинарный заголовок USGS
     if (m_header.rows == 0 || m_header.cols == 0) {
+        qDebug() << "DEMReader: Standard header not found, trying alternative parsing...";
         // Пробуем распарсить как простой ASCII grid
         QStringList lines = content.split('\n', Qt::SkipEmptyParts);
         
@@ -165,6 +196,7 @@ bool DEMReader::parseHeader(const QByteArray &data)
         
         // Если так и не нашли, пробуем вычислить из данных
         if (m_header.rows == 0 || m_header.cols == 0) {
+            qDebug() << "DEMReader: Trying to infer grid size from data...";
             // Для простоты предполагаем стандартный размер ячейки
             m_header.cellSize = 0.000277778; // ~30 arcseconds (SRTM)
             
@@ -190,6 +222,7 @@ bool DEMReader::parseHeader(const QByteArray &data)
             if (dataLines > 0 && maxCols > 0) {
                 m_header.rows = dataLines;
                 m_header.cols = maxCols;
+                qDebug() << "DEMReader: Inferred grid size:" << m_header.rows << "x" << m_header.cols;
             }
         }
     }
@@ -199,18 +232,23 @@ bool DEMReader::parseHeader(const QByteArray &data)
         double dx = (m_header.xmax - m_header.xmin) / (m_header.cols - 1);
         double dy = (m_header.ymax - m_header.ymin) / (m_header.rows - 1);
         m_header.cellSize = qAbs(dx) > qAbs(dy) ? qAbs(dx) : qAbs(dy);
+        qDebug() << "DEMReader: Calculated cell size:" << m_header.cellSize;
     }
 
     // Проверка на успешность парсинга
     if (m_header.rows <= 0 || m_header.cols <= 0) {
+        qDebug() << "DEMReader: Failed to determine grid size, rows=" << m_header.rows << ", cols=" << m_header.cols;
         return false;
     }
 
+    qDebug() << "DEMReader: Header parsed successfully, rows=" << m_header.rows << ", cols=" << m_header.cols;
     return true;
 }
 
 bool DEMReader::parseElevationData(const QByteArray &data)
 {
+    qDebug() << "DEMReader: parseElevationData called, data size:" << data.size();
+    
     QTextStream stream(data);
     stream.setCodec("UTF-8");
 
@@ -224,6 +262,7 @@ bool DEMReader::parseElevationData(const QByteArray &data)
     int row = 0;
     int col = 0;
     bool inDataSection = false;
+    int valuesRead = 0;
 
     for (const QString &line : lines) {
         QString trimmedLine = line.trimmed();
@@ -265,6 +304,7 @@ bool DEMReader::parseElevationData(const QByteArray &data)
                     }
 
                     col++;
+                    valuesRead++;
                     if (col >= m_header.cols) {
                         col = 0;
                         row++;
@@ -280,11 +320,15 @@ bool DEMReader::parseElevationData(const QByteArray &data)
         }
     }
 
+    qDebug() << "DEMReader: Values read:" << valuesRead << ", expected:" << (m_header.rows * m_header.cols);
+
     // Если не удалось прочитать данные
     if (m_elevationData.isEmpty() || (m_minElevation == std::numeric_limits<double>::max())) {
+        qDebug() << "DEMReader: No valid elevation data found";
         return false;
     }
 
+    qDebug() << "DEMReader: Elevation data parsed successfully, min=" << m_minElevation << ", max=" << m_maxElevation;
     return true;
 }
 

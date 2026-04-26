@@ -43,7 +43,7 @@ MainWindow::MainWindow(QWidget *parent)
     btnLayout->addWidget(m_btnOpenDEM);
 
     m_viewer = new MBTilesViewer(this);
-    m_demReader = new DEMReader(this);
+    m_demReader = new DEMReader();
 
     layout->addLayout(btnLayout);
     layout->addWidget(m_viewer);
