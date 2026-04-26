@@ -105,12 +105,12 @@ bool DEMReader::parseHeader(const QByteArray &data)
     // USGS DEM формат имеет специфическую структуру заголовка
     // Пытаемся найти ключевые поля в первых строках файла
     
-    QString content = QString::fromUtf8(data.left(1024));
-    qDebug() << "DEMReader: First 1024 bytes as string:" << content.left(200);
+    QString content = QString::fromUtf8(data.left(2048));
+    qDebug() << "DEMReader: First 2048 bytes as string:" << content.left(300);
     
     // Пробуем различные форматы DEM файлов
     
-    // Формат 1: ASCII DEM с метаданными в начале
+    // Формат 1: ASCII DEM с метаданными в начале (ArcInfo ASCII Grid)
     QRegularExpression xminRx("XMIN:\\s*([\\-\\d\\.]+)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpression xmaxRx("XMAX:\\s*([\\-\\d\\.]+)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpression yminRx("YMIN:\\s*([\\-\\d\\.]+)", QRegularExpression::CaseInsensitiveOption);
@@ -118,6 +118,7 @@ bool DEMReader::parseHeader(const QByteArray &data)
     QRegularExpression rowsRx("(?:NROWS|ROWS):\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpression colsRx("(?:NCOLS|COLS):\\s*(\\d+)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpression cellSizeRx("(?:CELLSIZE|PIXELSIZE|RESOLUTION):\\s*([\\-\\d\\.]+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression noDataRx("(?:NODATA_VALUE|NODATA):\\s*([\\-\\d\\.]+)", QRegularExpression::CaseInsensitiveOption);
 
     QRegularExpressionMatch match;
 
@@ -162,87 +163,110 @@ bool DEMReader::parseHeader(const QByteArray &data)
         m_header.cellSize = match.captured(1).toDouble();
         qDebug() << "DEMReader: Found CELLSIZE:" << m_header.cellSize;
     }
+    
+    match = noDataRx.match(content);
+    if (match.hasMatch()) {
+        m_noDataValue = match.captured(1).toDouble();
+        qDebug() << "DEMReader: Found NODATA value:" << m_noDataValue;
+    }
+
+    // Если нашли все параметры в заголовке - отлично
+    if (m_header.rows > 0 && m_header.cols > 0 && 
+        m_header.xmin != m_header.xmax && 
+        m_header.ymin != m_header.ymax) {
+        qDebug() << "DEMReader: Complete header found in standard format";
+        
+        // Вычисляем размер ячейки если не задан
+        if (m_header.cellSize <= 0) {
+            double dx = (m_header.xmax - m_header.xmin) / (m_header.cols - 1);
+            double dy = (m_header.ymax - m_header.ymin) / (m_header.rows - 1);
+            m_header.cellSize = qAbs(dx) > qAbs(dy) ? qAbs(dx) : qAbs(dy);
+            qDebug() << "DEMReader: Calculated cell size:" << m_header.cellSize;
+        }
+        
+        return true;
+    }
 
     // Если не нашли все параметры, пробуем альтернативный парсинг
-    // Некоторые DEM файлы имеют бинарный заголовок USGS
-    if (m_header.rows == 0 || m_header.cols == 0) {
-        qDebug() << "DEMReader: Standard header not found, trying alternative parsing...";
-        // Пробуем распарсить как простой ASCII grid
-        QStringList lines = content.split('\n', Qt::SkipEmptyParts);
+    qDebug() << "DEMReader: Standard header not complete, trying alternative parsing...";
+    qDebug() << "  Current state - rows:" << m_header.rows << ", cols:" << m_header.cols
+             << ", xmin:" << m_header.xmin << ", xmax:" << m_header.xmax
+             << ", ymin:" << m_header.ymin << ", ymax:" << m_header.ymax;
+    
+    // Пробуем распарсить как простой ASCII grid без заголовка
+    QStringList lines = content.split('\n', Qt::SkipEmptyParts);
+    
+    // Подсчитываем количество строк данных и столбцов
+    int dataLines = 0;
+    int maxCols = 0;
+    int minCols = INT_MAX;
+    
+    for (int i = 0; i < lines.size() && i < 100; ++i) {
+        QString line = lines[i].trimmed();
+        if (line.isEmpty() || line.startsWith("#")) continue;
         
-        // Ищем строки с числовыми данными (первая строка данных)
-        for (int i = 0; i < lines.size() && i < 20; ++i) {
-            QString line = lines[i].trimmed();
-            if (line.isEmpty() || line.startsWith("#")) continue;
-            
-            // Проверяем, содержит ли строка только числа (данные высот)
-            QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-            bool allNumbers = true;
-            for (const QString &part : parts) {
-                bool ok;
-                part.toDouble(&ok);
-                if (!ok && part != "-9999" && part != "NaN") {
-                    allNumbers = false;
-                    break;
-                }
-            }
-            
-            if (allNumbers && !parts.isEmpty()) {
-                // Нашли начало данных, предполагаем что это первая строка сетки
-                // Значит заголовок уже закончился
+        // Проверяем, содержит ли строка только числа (данные высот)
+        QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        if (parts.isEmpty()) continue;
+        
+        bool allNumbers = true;
+        for (const QString &part : parts) {
+            bool ok;
+            part.toDouble(&ok);
+            if (!ok && part != "-9999" && part != "NaN") {
+                allNumbers = false;
                 break;
             }
         }
         
-        // Если так и не нашли, пробуем вычислить из данных
-        if (m_header.rows == 0 || m_header.cols == 0) {
-            qDebug() << "DEMReader: Trying to infer grid size from data...";
-            // Для простоты предполагаем стандартный размер ячейки
-            m_header.cellSize = 0.000277778; // ~30 arcseconds (SRTM)
-            
-            // Подсчитываем количество строк данных
-            int dataLines = 0;
-            int maxCols = 0;
-            
-            for (int i = 0; i < lines.size(); ++i) {
-                QString line = lines[i].trimmed();
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                
-                QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-                if (parts.size() >= 2) {
-                    bool ok;
-                    parts[0].toDouble(&ok);
-                    if (ok || parts[0] == "-9999") {
-                        dataLines++;
-                        maxCols = qMax(maxCols, parts.size());
-                    }
-                }
-            }
-            
-            if (dataLines > 0 && maxCols > 0) {
-                m_header.rows = dataLines;
-                m_header.cols = maxCols;
-                qDebug() << "DEMReader: Inferred grid size:" << m_header.rows << "x" << m_header.cols;
-            }
+        if (allNumbers && !parts.isEmpty()) {
+            dataLines++;
+            maxCols = qMax(maxCols, parts.size());
+            minCols = qMin(minCols, parts.size());
         }
     }
-
-    // Вычисляем размер ячейки если не задан
-    if (m_header.cellSize <= 0 && m_header.rows > 1 && m_header.cols > 1) {
-        double dx = (m_header.xmax - m_header.xmin) / (m_header.cols - 1);
-        double dy = (m_header.ymax - m_header.ymin) / (m_header.rows - 1);
-        m_header.cellSize = qAbs(dx) > qAbs(dy) ? qAbs(dx) : qAbs(dy);
-        qDebug() << "DEMReader: Calculated cell size:" << m_header.cellSize;
+    
+    qDebug() << "DEMReader: Scanned" << dataLines << "data lines, cols range:" << minCols << "-" << maxCols;
+    
+    // Если нашли данные, предполагаем что это регулярная сетка
+    if (dataLines > 0 && maxCols > 0) {
+        // Если размеры не были найдены в заголовке, используем подсчитанные
+        if (m_header.rows == 0) {
+            m_header.rows = dataLines;
+        }
+        if (m_header.cols == 0) {
+            m_header.cols = (minCols == maxCols) ? maxCols : minCols;
+        }
+        
+        qDebug() << "DEMReader: Using grid size:" << m_header.rows << "x" << m_header.cols;
+        
+        // Если границы не были найдены, нужно их вычислить
+        // Для этого нам нужно прочитать первую и последнюю строку данных
+        if (m_header.xmin == m_header.xmax && m_header.ymin == m_header.ymax) {
+            // По умолчанию предполагаем что координаты неизвестны
+            // Это означает что getElevation не сможет работать без привязки к координатам
+            qDebug() << "DEMReader: WARNING - No coordinate bounds found. Elevation lookup by coordinates will not work.";
+            qDebug() << "DEMReader: File appears to be a raw elevation grid without georeferencing.";
+            
+            // Устанавливаем фиктивные границы (будет использоваться только для отображения диапазона высот)
+            m_header.xmin = 0; m_header.xmax = m_header.cols;
+            m_header.ymin = 0; m_header.ymax = m_header.rows;
+            m_header.cellSize = 1.0;
+        }
+        
+        // Вычисляем размер ячейки если не задан и есть границы
+        if (m_header.cellSize <= 0 && m_header.xmax != m_header.xmin) {
+            double dx = (m_header.xmax - m_header.xmin) / (m_header.cols - 1);
+            double dy = (m_header.ymax - m_header.ymin) / (m_header.rows - 1);
+            m_header.cellSize = qAbs(dx) > qAbs(dy) ? qAbs(dx) : qAbs(dy);
+            qDebug() << "DEMReader: Calculated cell size:" << m_header.cellSize;
+        }
+        
+        return true;
     }
 
-    // Проверка на успешность парсинга
-    if (m_header.rows <= 0 || m_header.cols <= 0) {
-        qDebug() << "DEMReader: Failed to determine grid size, rows=" << m_header.rows << ", cols=" << m_header.cols;
-        return false;
-    }
-
-    qDebug() << "DEMReader: Header parsed successfully, rows=" << m_header.rows << ", cols=" << m_header.cols;
-    return true;
+    qDebug() << "DEMReader: Failed to determine grid size from data";
+    return false;
 }
 
 bool DEMReader::parseElevationData(const QByteArray &data)

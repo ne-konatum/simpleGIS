@@ -113,6 +113,9 @@ private:
     // Статистика
     double m_minElevation;
     double m_maxElevation;
+    
+    // NoData значение
+    double m_noDataValue;
 };
 
 #endif // DEMREADER_H
