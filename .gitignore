@@ -1,1 +1,38 @@
-Nothing needs to be added to .gitignore since only a source code file (mainwindow.cpp) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+
+# Build directories
+build/
+dist/
+release/
+debug/
+
+# Dependencies
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+
+# IDE files
+*.swp
+*.swo
+*.tmp
+*.log
+
+# Qt specific
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+*.prl
+```

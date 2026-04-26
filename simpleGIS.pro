@@ -12,12 +12,14 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     mbtilesviewer.cpp \
-    tileloader.cpp
+    tileloader.cpp \
+    demreader.cpp
 
 HEADERS += \
     mainwindow.h \
     mbtilesviewer.h \
-    tileloader.h
+    tileloader.h \
+    demreader.h
 
 FORMS += \
     mainwindow.ui

@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "mbtilesviewer.h"
+#include "demreader.h"
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QStatusBar>
 #include <QFrame>
 #include <QFileDialog>
@@ -28,12 +30,22 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *centralWidget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(centralWidget);
 
+    // Горизонтальный layout для кнопок
+    QHBoxLayout *btnLayout = new QHBoxLayout();
+    
     m_btnOpen = new QPushButton("Open MBTiles File", this);
     connect(m_btnOpen, &QPushButton::clicked, this, &MainWindow::openFile);
+    
+    m_btnOpenDEM = new QPushButton("Open DEM File", this);
+    connect(m_btnOpenDEM, &QPushButton::clicked, this, &MainWindow::openDEMFile);
+    
+    btnLayout->addWidget(m_btnOpen);
+    btnLayout->addWidget(m_btnOpenDEM);
 
     m_viewer = new MBTilesViewer(this);
+    m_demReader = new DEMReader(this);
 
-    layout->addWidget(m_btnOpen);
+    layout->addLayout(btnLayout);
     layout->addWidget(m_viewer);
 
     setCentralWidget(centralWidget);
@@ -46,6 +58,14 @@ MainWindow::MainWindow(QWidget *parent)
     m_coordLabel->setFrameShadow(QFrame::Sunken);
     m_coordLabel->setText("WGS-84: Lon: ---, Lat: --- | СК-42 (GK): X: ---, Y: ---");
     statusBar()->addPermanentWidget(m_coordLabel);
+    
+    m_elevationLabel = new QLabel(this);
+    m_elevationLabel->setMinimumWidth(200);
+    m_elevationLabel->setFrameShape(QFrame::Panel);
+    m_elevationLabel->setFrameShadow(QFrame::Sunken);
+    m_elevationLabel->setText("Height: --- m");
+    statusBar()->addPermanentWidget(m_elevationLabel);
+    
     statusBar()->show();
 
     connect(m_viewer, &MBTilesViewer::cursorCoordinatesChanged,
@@ -55,6 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+    delete m_demReader;
 }
 
 void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
@@ -77,6 +98,18 @@ void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
                        .arg(zone);
 
     m_coordLabel->setText(text);
+    
+    // Получаем высоту из DEM файла если он загружен
+    if (m_demReader && m_demReader->isLoaded()) {
+        double height = 0.0;
+        if (m_demReader->getElevation(latitude, longitude, height)) {
+            m_elevationLabel->setText(QString("Height: %1 m").arg(height, 0, 'f', 2));
+        } else {
+            m_elevationLabel->setText("Height: N/A (вне области DEM)");
+        }
+    } else {
+        m_elevationLabel->setText("Height: --- m");
+    }
 }
 
 double MainWindow::toRadians(double deg)
@@ -204,5 +237,19 @@ void MainWindow::openFile()
     QString fileName = QFileDialog::getOpenFileName(this, "Open MBTiles", "", "MBTiles Files (*.mbtiles)");
     if (!fileName.isEmpty()) {
         m_viewer->openFile(fileName);
+    }
+}
+
+void MainWindow::openDEMFile()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, "Open DEM File", "", "DEM Files (*.dem *.txt *.asc);;All Files (*)");
+    if (!fileName.isEmpty()) {
+        if (m_demReader->openFile(fileName)) {
+            qDebug() << "DEM file loaded successfully:" << fileName;
+            qDebug() << "Elevation range:" << m_demReader->getMinElevation() 
+                     << "-" << m_demReader->getMaxElevation() << "m";
+        } else {
+            qDebug() << "Failed to load DEM file:" << fileName;
+        }
     }
 }
