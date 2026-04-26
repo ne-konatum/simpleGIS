@@ -10,6 +10,7 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class MBTilesViewer;
+class DEMReader;
 
 class MainWindow : public QMainWindow
 {
@@ -22,6 +23,7 @@ public:
 private slots:
     void onCursorCoordinatesChanged(double longitude, double latitude);
     void openFile();
+    void openDEMFile();
 
 private:
     // Структура для хранения параметров эллипсоида
@@ -50,8 +52,11 @@ private:
 
     Ui::MainWindow *ui;
     MBTilesViewer *m_viewer;
+    DEMReader *m_demReader;
     QLabel *m_coordLabel;
+    QLabel *m_elevationLabel;
     QPushButton *m_btnOpen;
+    QPushButton *m_btnOpenDEM;
 
     // Параметры эллипсоидов
     const Ellipsoid m_wgs84;
