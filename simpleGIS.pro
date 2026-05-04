@@ -1,4 +1,4 @@
-QT       += core gui widgets sql concurrent
+QT       += core gui widgets sql concurrent network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -15,7 +15,11 @@ SOURCES += \
     mbtilesviewer.cpp \
     tileloader.cpp \
     demreader.cpp \
-    mapstreamserver.cpp
+    mapstreamserver.cpp \
+    mapstreamclient.cpp \
+    mapviewer.cpp \
+    clientwindow.cpp \
+    main_client.cpp
 
 HEADERS += \
     hgtmanager.h \
@@ -23,7 +27,10 @@ HEADERS += \
     mbtilesviewer.h \
     tileloader.h \
     demreader.h \
-    mapstreamserver.h
+    mapstreamserver.h \
+    mapstreamclient.h \
+    mapviewer.h \
+    clientwindow.h
 
 FORMS += \
     mainwindow.ui

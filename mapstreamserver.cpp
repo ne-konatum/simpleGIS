@@ -151,7 +151,7 @@ void MapStreamServer::processRequest(QTcpSocket *clientSocket, const QByteArray 
             handleTileRequest(clientSocket, request);
             break;
             
-        case StreamRequest::ELEVATION_REQUEST:
+        case StreamRequest::ELEVATION_REQUEST: {
             if (data.size() < 17) {
                 sendError(clientSocket, "Invalid elevation request: insufficient data");
                 return;
@@ -166,7 +166,8 @@ void MapStreamServer::processRequest(QTcpSocket *clientSocket, const QByteArray 
             memcpy(&request.longitude, &lonBits, sizeof(double));
             handleElevationRequest(clientSocket, request);
             break;
-            
+        }
+        
         case StreamRequest::METADATA_REQUEST:
             handleMetadataRequest(clientSocket);
             break;
