@@ -12,6 +12,7 @@ QT_END_NAMESPACE
 class MBTilesViewer;
 class DEMReader;
 class HgtManager;
+class MapStreamServer;
 
 class MainWindow : public QMainWindow
 {
@@ -25,6 +26,7 @@ private slots:
     void onCursorCoordinatesChanged(double longitude, double latitude);
     void openFile();
     void selectHgtDirectory();
+    void toggleStreamServer();
 
 private:
     struct Ellipsoid {
@@ -48,12 +50,17 @@ private:
 
     DEMReader *m_demReader;
     HgtManager *m_hgtManager;
+    
+    MapStreamServer *m_streamServer;
+    bool m_streamServerEnabled;
 
     QLabel *m_coordLabel;
     QLabel *m_elevationLabel;
+    QLabel *m_streamStatusLabel;
 
     QPushButton *m_btnOpen;
     QPushButton *m_btnSelectHgtDir;
+    QPushButton *m_btnToggleStream;
 
     const Ellipsoid m_wgs84;
     const Ellipsoid m_krasovsky;
