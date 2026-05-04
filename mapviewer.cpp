@@ -4,30 +4,11 @@
 #include <QWheelEvent>
 #include <QResizeEvent>
 #include <cmath>
+#include <cstring>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-// Вспомогательный класс для ключа QMap
-template<typename T1, typename T2, typename T3>
-class QTriple {
-public:
-    QTriple(T1 a, T2 b, T3 c) : v1(a), v2(b), v3(c) {}
-    
-    bool operator<(const QTriple &other) const {
-        if (v1 != other.v1) return v1 < other.v1;
-        if (v2 != other.v2) return v2 < other.v2;
-        return v3 < other.v3;
-    }
-    
-    T1 v1;
-    T2 v2;
-    T3 v3;
-};
-
-// Используем QTriple вместо QTuple (который может быть недоступен в старых Qt)
-using TileKey = QTriple<int, int, int>;
 
 MapViewer::MapViewer(QWidget *parent)
     : QWidget(parent)
@@ -110,9 +91,6 @@ void MapViewer::paintEvent(QPaintEvent *event)
     // Смещение для центрирования
     double offsetX = (centerTile.x() - std::floor(centerTile.x())) * 256;
     double offsetY = (centerTile.y() - std::floor(centerTile.y())) * 256;
-    
-    int screenX = static_cast<int>(width() / 2 - offsetX);
-    int screenY = static_cast<int>(height() / 2 - offsetY);
     
     // Отрисовка тайлов
     for (int dy = 0; dy <= tilesY; ++dy) {
@@ -247,7 +225,7 @@ void MapViewer::onTileReceived(int zoom, int x, int y, const QImage &image)
     }
 }
 
-void MapViewer::onElevationReceived(double latitude, double longitude, double elevation)
+void MapViewer::onElevationReceived(double /*latitude*/, double /*longitude*/, double elevation)
 {
     m_currentElevation = elevation;
     update();

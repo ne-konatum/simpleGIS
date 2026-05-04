@@ -7,6 +7,25 @@
 #include <QPoint>
 #include "mapstreamclient.h"
 
+// Вспомогательный класс для ключа QMap (вместо несуществующего QTuple)
+template<typename T1, typename T2, typename T3>
+class QTriple {
+public:
+    QTriple(T1 a, T2 b, T3 c) : v1(a), v2(b), v3(c) {}
+    
+    bool operator<(const QTriple &other) const {
+        if (v1 != other.v1) return v1 < other.v1;
+        if (v2 != other.v2) return v2 < other.v2;
+        return v3 < other.v3;
+    }
+    
+    T1 v1;
+    T2 v2;
+    T3 v3;
+};
+
+using TileKey = QTriple<int, int, int>;
+
 class MapViewer : public QWidget
 {
     Q_OBJECT
@@ -64,7 +83,7 @@ private:
     double m_centerLon;
     
     // Кэш тайлов: key = (zoom, x, y)
-    QMap<QTuple<int, int, int>, QImage> m_tileCache;
+    QMap<TileKey, QImage> m_tileCache;
     
     bool m_dragging;
     QPoint m_lastMousePos;

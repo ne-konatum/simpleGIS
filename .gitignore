@@ -9,39 +9,39 @@
 *.out
 
 # Dependencies
-node_modules/
 venv/
 .venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
-dist/
+
+# Build directories
 build/
+dist/
 target/
-.gradle/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
 
-# Editors
-.vscode/
-.idea/
-
 # Environment
 .env
 .env.local
 *.env.*
 
+# Editors
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
 # Coverage
 coverage/
 htmlcov/
 .coverage
-
-# System
-.DS_Store
-Thumbs.db
 
 # Compressed files
 *.zip

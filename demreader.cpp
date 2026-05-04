@@ -3,7 +3,6 @@
 #include <QFileInfo>
 #include <QDataStream>
 #include <QRegularExpression>
-#include <QRegExp>
 #include <limits>
 #include <QtGlobal>
 #include <QDebug>
@@ -196,7 +195,7 @@ bool DEMReader::parseAsciiGrid(QFile &file)
     for (int i = 0; i < 6; ++i) {
         if (in.atEnd()) break;
         QString line = in.readLine().trimmed();
-        QStringList parts = line.split(QRegExp("\\s+"), QString::SkipEmptyParts);
+        QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         if (parts.size() < 2) continue;
         QString key = parts[0].toLower();
         double val = parts[1].toDouble();

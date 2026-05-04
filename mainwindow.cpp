@@ -21,13 +21,14 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_viewer(nullptr)
+    , m_streamServer(nullptr)
+    , m_streamServerEnabled(false)
+    , m_hgtManager(nullptr)
+    , m_demReader(nullptr)
     , m_wgs84{6378137.0, 0.00669437999014}
     , m_krasovsky{6378245.0, 0.00669342162297}
     , m_transformParams{-26.0, -125.0, -7.0}
-    , m_hgtManager(nullptr)
-    , m_demReader(nullptr)
-    , m_streamServer(nullptr)
-    , m_streamServerEnabled(false)
 {
     ui->setupUi(this);
 
@@ -226,7 +227,8 @@ void MainWindow::geocentricToGeodetic(double X, double Y, double Z, const Ellips
 void MainWindow::wgs84ToSK42(double lon, double lat, double &x, double &y, int &zone)
 {
     zone = static_cast<int>(std::floor(lon / 6.0)) + 1;
-    if (zone < 1) zone = 1; if (zone > 60) zone = 60;
+    if (zone < 1) zone = 1;
+    if (zone > 60) zone = 60;
     double L0 = zone * 6.0 - 3.0;
     double X_wgs, Y_wgs, Z_wgs;
     geodeticToGeocentric(lat, lon, 0.0, m_wgs84, X_wgs, Y_wgs, Z_wgs);

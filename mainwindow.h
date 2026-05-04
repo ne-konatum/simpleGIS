@@ -48,9 +48,6 @@ private:
     Ui::MainWindow *ui;
     MBTilesViewer *m_viewer;
 
-    DEMReader *m_demReader;
-    HgtManager *m_hgtManager;
-    
     MapStreamServer *m_streamServer;
     bool m_streamServerEnabled;
 
@@ -61,6 +58,9 @@ private:
     QPushButton *m_btnOpen;
     QPushButton *m_btnSelectHgtDir;
     QPushButton *m_btnToggleStream;
+
+    HgtManager *m_hgtManager;
+    DEMReader *m_demReader;
 
     const Ellipsoid m_wgs84;
     const Ellipsoid m_krasovsky;

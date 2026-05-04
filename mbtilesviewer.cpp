@@ -335,9 +335,9 @@ void MBTilesViewer::wheelEvent(QWheelEvent *event) {
             // В данном случае просто разрешаем, но тайлов не будет
         }
 
-        QPoint cursorPos = event->pos();
+        QPointF cursorPos = event->position();
         double factor = std::pow(2.0, m_currentZoom - oldZoom);
-        m_offset = (m_offset + cursorPos) * factor - cursorPos;
+        m_offset = (m_offset + cursorPos.toPoint()) * factor - cursorPos.toPoint();
 
         m_tileCache.clear();
         qDebug() << "Current zoom:" << m_currentZoom;

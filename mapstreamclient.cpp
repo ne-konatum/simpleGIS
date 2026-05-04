@@ -2,6 +2,7 @@
 #include <QDataStream>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <cstring>
 
 // Протокол совпадает с серверным
 enum class StreamRequest : quint8 {
@@ -23,8 +24,7 @@ MapStreamClient::MapStreamClient(QObject *parent)
 {
     connect(m_socket, &QTcpSocket::connected, this, &MapStreamClient::onConnected);
     connect(m_socket, &QTcpSocket::disconnected, this, &MapStreamClient::onDisconnected);
-    connect(m_socket, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::error), 
-            this, &MapStreamClient::onError);
+    connect(m_socket, &QAbstractSocket::errorOccurred, this, &MapStreamClient::onError);
     connect(m_socket, &QTcpSocket::readyRead, this, &MapStreamClient::onReadyRead);
 }
 
