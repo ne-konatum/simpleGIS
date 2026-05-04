@@ -14,14 +14,16 @@ SOURCES += \
     mainwindow.cpp \
     mbtilesviewer.cpp \
     tileloader.cpp \
-    demreader.cpp
+    demreader.cpp \
+    mapstreamserver.cpp
 
 HEADERS += \
     hgtmanager.h \
     mainwindow.h \
     mbtilesviewer.h \
     tileloader.h \
-    demreader.h
+    demreader.h \
+    mapstreamserver.h
 
 FORMS += \
     mainwindow.ui

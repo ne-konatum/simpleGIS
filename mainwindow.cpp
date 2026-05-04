@@ -3,12 +3,14 @@
 #include "mbtilesviewer.h"
 #include "demreader.h"
 #include "hgtmanager.h"
+#include "mapstreamserver.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStatusBar>
 #include <QFrame>
 #include <QFileDialog>
 #include <QDir>
+#include <QMessageBox>
 #include <cmath>
 #include <QDebug>
 
@@ -24,6 +26,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_transformParams{-26.0, -125.0, -7.0}
     , m_hgtManager(nullptr)
     , m_demReader(nullptr)
+    , m_streamServer(nullptr)
+    , m_streamServerEnabled(false)
 {
     ui->setupUi(this);
 
@@ -38,8 +42,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_btnSelectHgtDir = new QPushButton("Select HGT Directory", this);
     connect(m_btnSelectHgtDir, &QPushButton::clicked, this, &MainWindow::selectHgtDirectory);
 
+    m_btnToggleStream = new QPushButton("Start Stream Server", this);
+    connect(m_btnToggleStream, &QPushButton::clicked, this, &MainWindow::toggleStreamServer);
+
     btnLayout->addWidget(m_btnOpen);
     btnLayout->addWidget(m_btnSelectHgtDir);
+    btnLayout->addWidget(m_btnToggleStream);
 
     m_viewer = new MBTilesViewer(this);
 
@@ -67,14 +75,27 @@ MainWindow::MainWindow(QWidget *parent)
     m_elevationLabel->setText("Height: --- m");
     statusBar()->addPermanentWidget(m_elevationLabel);
 
+    m_streamStatusLabel = new QLabel(this);
+    m_streamStatusLabel->setMinimumWidth(150);
+    m_streamStatusLabel->setFrameShape(QFrame::Panel);
+    m_streamStatusLabel->setFrameShadow(QFrame::Sunken);
+    m_streamStatusLabel->setText("Stream: Off");
+    statusBar()->addPermanentWidget(m_streamStatusLabel);
+
     statusBar()->show();
 
     connect(m_viewer, &MBTilesViewer::cursorCoordinatesChanged,
             this, &MainWindow::onCursorCoordinatesChanged);
+    
+    // Инициализируем сервер стриминга
+    m_streamServer = new MapStreamServer(this);
 }
 
 MainWindow::~MainWindow()
 {
+    if (m_streamServer) {
+        m_streamServer->stop();
+    }
     delete ui;
 }
 
@@ -247,5 +268,42 @@ void MainWindow::wgs84ToSK42(double lon, double lat, double &x, double &y, int &
 void MainWindow::openFile()
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Open MBTiles", "", "MBTiles Files (*.mbtiles)");
-    if (!fileName.isEmpty()) m_viewer->openFile(fileName);
+    if (!fileName.isEmpty()) {
+        m_viewer->openFile(fileName);
+        
+        // Если сервер запущен, уведомляем что карта загружена
+        if (m_streamServerEnabled && m_streamServer) {
+            m_streamServer->setMBTilesViewer(m_viewer);
+            statusBar()->showMessage("MBTiles loaded and available for streaming", 3000);
+        }
+    }
+}
+
+void MainWindow::toggleStreamServer()
+{
+    if (!m_streamServer) return;
+    
+    if (m_streamServerEnabled) {
+        // Остановить сервер
+        m_streamServer->stop();
+        m_streamServerEnabled = false;
+        m_btnToggleStream->setText("Start Stream Server");
+        m_streamStatusLabel->setText("Stream: Off");
+        statusBar()->showMessage("Stream server stopped", 3000);
+    } else {
+        // Запустить сервер
+        quint16 port = 5555; // Порт по умолчанию
+        if (m_streamServer->start(port)) {
+            m_streamServerEnabled = true;
+            m_streamServer->setMBTilesViewer(m_viewer);
+            m_streamServer->setDEMReader(m_demReader);
+            m_btnToggleStream->setText("Stop Stream Server");
+            m_streamStatusLabel->setText(QString("Stream: On (%1)").arg(port));
+            statusBar()->showMessage(QString("Stream server started on port %1").arg(port), 5000);
+        } else {
+            QMessageBox::critical(this, "Error", 
+                QString("Failed to start stream server on port %1.\n"
+                        "Make sure the port is not already in use.").arg(port));
+        }
+    }
 }
