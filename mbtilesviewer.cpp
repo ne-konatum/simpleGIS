@@ -346,7 +346,7 @@ void MBTilesViewer::wheelEvent(QWheelEvent *event) {
 }
 
 // Конвертация пиксельных координат курсора в географические координаты (долгота/широта)
-void MBTilesViewer::pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude) {
+void MBTilesViewer::pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude) const {
     // Получаем координаты тайла в пикселях с учетом смещения
     double pixelX = pixelPos.x() + m_offset.x();
     double pixelY = pixelPos.y() + m_offset.y();
@@ -366,4 +366,20 @@ void MBTilesViewer::pixelToLonLat(const QPoint& pixelPos, double& longitude, dou
     // Конвертируем в широту (используя проекцию Меркатора)
     double latRad = std::atan(std::sinh(M_PI * (1.0 - 2.0 * yNorm)));
     latitude = latRad * 180.0 / M_PI;
+}
+
+// Получить видимые географические границы (minLat, maxLat, minLon, maxLon)
+void MBTilesViewer::getVisibleGeoBounds(double &minLat, double &maxLat, double &minLon, double &maxLon) const {
+    // Левый верхний угол
+    double lon1, lat1;
+    pixelToLonLat(QPoint(0, 0), lon1, lat1);
+    
+    // Правый нижний угол
+    double lon2, lat2;
+    pixelToLonLat(QPoint(width(), height()), lon2, lat2);
+    
+    minLon = qMin(lon1, lon2);
+    maxLon = qMax(lon1, lon2);
+    minLat = qMin(lat1, lat2);
+    maxLat = qMax(lat1, lat2);
 }

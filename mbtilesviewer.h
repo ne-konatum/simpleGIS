@@ -54,6 +54,8 @@ public:
     
     // Проверка загружена ли карта
     bool isMapLoaded() const { return m_dbReady && !m_db.databaseName().isEmpty(); }
+    // Получить видимые географические границы (minLat, maxLat, minLon, maxLon)
+    void getVisibleGeoBounds(double &minLat, double &maxLat, double &minLon, double &maxLon) const;
 
 signals:
     // Сигнал больше не нужен для синхронной загрузки, но оставим для совместимости если потребуется асинхронность
@@ -91,7 +93,7 @@ private:
     void calculateInitialView();
     
     // Конвертация пиксельных координат в географические (долгота/широта)
-    void pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude);
+    void pixelToLonLat(const QPoint& pixelPos, double& longitude, double& latitude) const;
 
     QSqlDatabase m_db;
     bool m_dbReady;

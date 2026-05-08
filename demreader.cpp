@@ -44,6 +44,97 @@ bool DEMReader::updateForLocation(double lat, double lon)
     return loadFile(filePath);
 }
 
+bool DEMReader::updateForBounds(double minLat, double maxLat, double minLon, double maxLon)
+{
+    if (!m_hgtManager) {
+        return false;
+    }
+
+    // Получаем все файлы HGT, которые покрывают заданные границы
+    QStringList files = m_hgtManager->findFilesForBounds(minLat, maxLat, minLon, maxLon);
+    
+    if (files.isEmpty()) {
+        return false;
+    }
+
+    bool anyLoaded = false;
+    
+    for (const QString &filePath : files) {
+        // Проверяем, загружен ли уже этот файл в кэш
+        QFileInfo fi(filePath);
+        QString fileName = fi.fileName();
+        
+        // Генерируем ключ для кэша на основе имени файла
+        QRegularExpression re("([ns])(\\d+)([ew])(\\d+)", QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch match = re.match(fileName);
+        if (!match.hasMatch()) continue;
+        
+        double startLat = match.captured(2).toInt();
+        double startLon = match.captured(4).toInt();
+        if (match.captured(1).toLower() == 's') startLat = -startLat;
+        if (match.captured(3).toLower() == 'w') startLon = -startLon;
+        
+        int latIdx = static_cast<int>(std::floor(startLat));
+        int lonIdx = static_cast<int>(std::floor(startLon));
+        QString cacheKey = QString("%1_%2").arg(latIdx).arg(lonIdx);
+        
+        // Если файл уже в кэше, пропускаем его загрузку
+        if (m_elevationCache.contains(cacheKey)) {
+            anyLoaded = true;
+            continue;
+        }
+        
+        // Загружаем файл и сохраняем в кэш
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            qWarning() << "DEMReader: Cannot open" << filePath;
+            continue;
+        }
+
+        QVector<float> elevations;
+        double xMin, yMin, cellSize;
+        int rows, cols;
+        
+        QString suffix = fi.suffix().toLower();
+        bool loaded = false;
+        
+        if (suffix == "hgt") {
+            loaded = tryReadHgtForCache(file, fileName, elevations, xMin, yMin, cellSize, rows, cols);
+        }
+        
+        if (!loaded) {
+            file.seek(0);
+            loaded = parseAsciiGridForCache(file, elevations, xMin, yMin, cellSize, rows, cols);
+        }
+        
+        if (loaded) {
+            m_elevationCache[cacheKey] = elevations;
+            m_cacheXMin[cacheKey] = xMin;
+            m_cacheYMin[cacheKey] = yMin;
+            m_cacheCellSize[cacheKey] = cellSize;
+            m_cacheRows[cacheKey] = rows;
+            m_cacheCols[cacheKey] = cols;
+            anyLoaded = true;
+            
+            // Устанавливаем первый загруженный файл как текущий для обратной совместимости
+            if (m_currentFile.isEmpty()) {
+                m_currentFile = filePath;
+                m_xMin = xMin;
+                m_yMin = yMin;
+                m_xMax = xMin + 1.0;
+                m_yMax = yMin + 1.0;
+                m_cellSize = cellSize;
+                m_rows = rows;
+                m_cols = cols;
+                m_elevations = elevations;
+                m_isLoaded = true;
+            }
+        }
+    }
+    
+    return anyLoaded;
+}
+
 bool DEMReader::loadFile(const QString &filePath)
 {
     QFile file(filePath);
@@ -112,6 +203,102 @@ bool DEMReader::tryReadHgt(QFile &file, const QString &fileName)
     }
 
     return tryReadBlock(file, 0, rows, cols, startLon, startLat);
+}
+
+bool DEMReader::tryReadHgtForCache(QFile &file, const QString &fileName, QVector<float> &elevations, 
+                                    double &xMin, double &yMin, double &cellSize, int &rows, int &cols)
+{
+    QRegularExpression re("([ns])(\\d+)([ew])(\\d+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch match = re.match(fileName);
+    if (!match.hasMatch()) return false;
+
+    bool okLat, okLon;
+    double startLat = match.captured(2).toInt(&okLat);
+    double startLon = match.captured(4).toInt(&okLon);
+    if (!okLat || !okLon) return false;
+
+    if (match.captured(1).toLower() == 's') startLat = -startLat;
+    if (match.captured(3).toLower() == 'w') startLon = -startLon;
+
+    long long fileSize = file.size();
+
+    if (fileSize == 3601LL * 3601LL * 2) {
+        rows = 3601; cols = 3601;
+    } else if (fileSize == 1201LL * 1201LL * 2) {
+        rows = 1201; cols = 1201;
+    } else {
+        long long points = fileSize / 2;
+        int sqrtPoints = static_cast<int>(std::sqrt(points));
+        if (sqrtPoints * sqrtPoints == points && sqrtPoints > 100) {
+            rows = sqrtPoints; cols = sqrtPoints;
+        } else {
+            return false;
+        }
+    }
+
+    return tryReadBlockForCache(file, 0, rows, cols, startLon, startLat, elevations, xMin, yMin, cellSize);
+}
+
+bool DEMReader::tryReadBlockForCache(QFile &file, long long offset, int rows, int cols, 
+                                      double lonStart, double latStart, QVector<float> &elevations,
+                                      double &xMin, double &yMin, double &cellSize)
+{
+    file.seek(offset);
+    QByteArray testBuffer(200, 0);
+    if (file.read(testBuffer.data(), testBuffer.size()) != testBuffer.size()) return false;
+
+    bool useBigEndian = true;
+    int validBE = 0, validLE = 0;
+
+    for (int i = 0; i < 10; ++i) {
+        unsigned char b1 = testBuffer[i*2];
+        unsigned char b2 = testBuffer[i*2+1];
+        short valBE = (b1 << 8) | b2;
+        short valLE = (b2 << 8) | b1;
+        if (valBE > -100 && valBE < 6000) validBE++;
+        if (valLE > -100 && valLE < 6000) validLE++;
+    }
+    useBigEndian = (validBE >= validLE);
+    if (validBE < 5 && validLE < 5) return false;
+
+    file.seek(offset);
+    long long totalPoints = (long long)rows * cols;
+    elevations.reserve(totalPoints);
+
+    float minV = std::numeric_limits<float>::max();
+    float maxV = std::numeric_limits<float>::lowest();
+    QByteArray buffer(4096, 0);
+    long long pointsRead = 0;
+
+    while (pointsRead < totalPoints && !file.atEnd()) {
+        qint64 bytesRead = file.read(buffer.data(), buffer.size());
+        if (bytesRead <= 0) break;
+        int count = bytesRead / 2;
+        const unsigned char* raw = reinterpret_cast<const unsigned char*>(buffer.constData());
+
+        for (int i = 0; i < count && pointsRead < totalPoints; ++i) {
+            short val;
+            if (useBigEndian) val = (static_cast<short>(raw[i*2]) << 8) | static_cast<short>(raw[i*2+1]);
+            else val = (static_cast<short>(raw[i*2+1]) << 8) | static_cast<short>(raw[i*2]);
+
+            float h = static_cast<float>(val);
+            if (h < -500) h = -9999.0;
+            elevations.append(h);
+            if (h > -500) {
+                if (h < minV) minV = h;
+                if (h > maxV) maxV = h;
+            }
+            pointsRead++;
+        }
+    }
+
+    if (pointsRead != totalPoints || minV > 5000 || maxV < -100) return false;
+
+    xMin = lonStart;
+    yMin = latStart;
+    cellSize = 1.0 / (cols - 1);
+
+    return true;
 }
 
 bool DEMReader::tryReadBlock(QFile &file, long long offset, int rows, int cols, double lonStart, double latStart)
@@ -230,8 +417,53 @@ bool DEMReader::parseAsciiGrid(QFile &file)
     return true;
 }
 
+bool DEMReader::parseAsciiGridForCache(QFile &file, QVector<float> &elevations, 
+                                        double &xMin, double &yMin, double &cellSize, 
+                                        int &rows, int &cols)
+{
+    QTextStream in(&file);
+    int ncols = 0, nrows = 0;
+    double xll = 0, yll = 0, cell = 0, nodata = -9999;
+
+    for (int i = 0; i < 6; ++i) {
+        if (in.atEnd()) break;
+        QString line = in.readLine().trimmed();
+        QStringList parts = line.split(QRegExp("\\s+"), QString::SkipEmptyParts);
+        if (parts.size() < 2) continue;
+        QString key = parts[0].toLower();
+        double val = parts[1].toDouble();
+        if (key == "ncols") ncols = (int)val;
+        else if (key == "nrows") nrows = (int)val;
+        else if (key.startsWith("xll")) xll = val;
+        else if (key.startsWith("yll")) yll = val;
+        else if (key.contains("cell")) cell = val;
+        else if (key.contains("nodata")) nodata = val;
+    }
+
+    if (ncols <= 0 || nrows <= 0) return false;
+
+    cols = ncols; rows = nrows;
+    xMin = xll; yMin = yll; cellSize = cell;
+    
+    elevations.resize(ncols * nrows);
+
+    for (int i = 0; i < ncols * nrows; ++i) {
+        double v; in >> v;
+        elevations[i] = static_cast<float>(v);
+    }
+    return true;
+}
+
 bool DEMReader::getElevation(double lat, double lon, double &height) const
 {
+    // Сначала пробуем получить высоту из кэша (если есть загруженные тайлы)
+    if (!m_elevationCache.isEmpty()) {
+        if (getElevationFromCache(lat, lon, height)) {
+            return true;
+        }
+    }
+    
+    // Если не нашли в кэше, пробуем старый метод (для обратной совместимости)
     if (!m_isLoaded || m_cols == 0 || m_rows == 0) {
         height = 0;
         return false;
@@ -276,5 +508,63 @@ bool DEMReader::getElevation(double lat, double lon, double &height) const
         return false;
     }
 
+    return true;
+}
+
+bool DEMReader::getElevationFromCache(double lat, double lon, double &height) const
+{
+    const double epsilon = 1e-5;
+    
+    // Определяем индекс тайла для данной точки
+    int latIdx = static_cast<int>(std::floor(lat));
+    int lonIdx = static_cast<int>(std::floor(lon));
+    QString cacheKey = QString("%1_%2").arg(latIdx).arg(lonIdx);
+    
+    // Проверяем, есть ли этот тайл в кэше
+    if (!m_elevationCache.contains(cacheKey)) {
+        return false;
+    }
+    
+    const QVector<float> &elevations = m_elevationCache[cacheKey];
+    int rows = m_cacheRows[cacheKey];
+    int cols = m_cacheCols[cacheKey];
+    double xMin = m_cacheXMin[cacheKey];
+    double yMin = m_cacheYMin[cacheKey];
+    double cellSize = m_cacheCellSize[cacheKey];
+    
+    // Проверяем границы
+    if (lon < xMin - epsilon || lon > xMin + 1.0 + epsilon ||
+        lat < yMin - epsilon || lat > yMin + 1.0 + epsilon) {
+        return false;
+    }
+    
+    // Ограничиваем координаты
+    double clampedLon = qBound(xMin, lon, xMin + 1.0);
+    double clampedLat = qBound(yMin, lat, yMin + 1.0);
+    
+    int col = static_cast<int>((clampedLon - xMin) / cellSize);
+    int rowFromBottom = static_cast<int>((clampedLat - yMin) / cellSize);
+    
+    if (col >= cols) col = cols - 1;
+    if (rowFromBottom >= rows) rowFromBottom = rows - 1;
+    if (col < 0) col = 0;
+    if (rowFromBottom < 0) rowFromBottom = 0;
+    
+    int row = rows - 1 - rowFromBottom;
+    int index = row * cols + col;
+    
+    if (index < 0 || index >= elevations.size()) {
+        height = 0;
+        return false;
+    }
+    
+    height = elevations[index];
+    
+    // Проверка на NoData
+    if (height < -500) {
+        height = 0;
+        return false;
+    }
+    
     return true;
 }

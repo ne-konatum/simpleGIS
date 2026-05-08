@@ -60,3 +60,27 @@ QString HgtManager::findFileForLocation(double lat, double lon) const
     QString key = QString("%1_%2").arg(latIdx).arg(lonIdx);
     return m_tileMap.value(key, QString());
 }
+
+QStringList HgtManager::findFilesForBounds(double minLat, double maxLat, double minLon, double maxLon) const
+{
+    QStringList result;
+    
+    // Определяем диапазон индексов тайлов по широте и долготе
+    int startLatIdx = static_cast<int>(std::floor(minLat));
+    int endLatIdx = static_cast<int>(std::floor(maxLat));
+    int startLonIdx = static_cast<int>(std::floor(minLon));
+    int endLonIdx = static_cast<int>(std::floor(maxLon));
+    
+    // Перебираем все возможные комбинации индексов в пределах границ
+    for (int latIdx = startLatIdx; latIdx <= endLatIdx; ++latIdx) {
+        for (int lonIdx = startLonIdx; lonIdx <= endLonIdx; ++lonIdx) {
+            QString key = QString("%1_%2").arg(latIdx).arg(lonIdx);
+            QString filePath = m_tileMap.value(key, QString());
+            if (!filePath.isEmpty()) {
+                result.append(filePath);
+            }
+        }
+    }
+    
+    return result;
+}

@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QMap>
+#include <QStringList>
 #include <cmath>
 
 class HgtManager : public QObject
@@ -12,6 +13,7 @@ class HgtManager : public QObject
 public:
     explicit HgtManager(const QString &rootPath, QObject *parent = nullptr);
     QString findFileForLocation(double lat, double lon) const;
+    QStringList findFilesForBounds(double minLat, double maxLat, double minLon, double maxLon) const;
     int tileCount() const { return m_tileMap.size(); }
 
 private:

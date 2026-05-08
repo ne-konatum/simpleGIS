@@ -131,31 +131,19 @@ void MainWindow::onCursorCoordinatesChanged(double longitude, double latitude)
         return;
     }
 
+    // Получаем видимые географические границы из viewer и загружаем все подходящие HGT тайлы
+    double minLat, maxLat, minLon, maxLon;
+    m_viewer->getVisibleGeoBounds(minLat, maxLat, minLon, maxLon);
+    
+    // Загружаем все HGT файлы, которые покрывают видимую область
+    m_demReader->updateForBounds(minLat, maxLat, minLon, maxLon);
+
     bool found = false;
     double height = 0.0;
 
-    // 1. Пробуем получить высоту из текущего загруженного файла
-    if (m_demReader->isLoaded()) {
-        if (m_demReader->getElevation(latitude, longitude, height)) {
-            found = true;
-        } else {
-            // Если текущий файл не покрывает точку, пробуем найти и загрузить новый
-            // Это может случиться на границе тайлов
-            if (m_demReader->updateForLocation(latitude, longitude)) {
-                // Если updateForLocation вернул true, значит файл найден (или был актуален)
-                // Пробуем снова получить высоту
-                if (m_demReader->getElevation(latitude, longitude, height)) {
-                    found = true;
-                }
-            }
-        }
-    } else {
-        // Файл еще не загружен, пытаемся загрузить для этой точки
-        if (m_demReader->updateForLocation(latitude, longitude)) {
-            if (m_demReader->getElevation(latitude, longitude, height)) {
-                found = true;
-            }
-        }
+    // Пробуем получить высоту для текущей позиции курсора
+    if (m_demReader->getElevation(latitude, longitude, height)) {
+        found = true;
     }
 
     if (found) {
